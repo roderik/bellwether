@@ -44,7 +44,7 @@ describe("ciCommand.run", () => {
     await ciCommand.run(c);
     expect(c.ok).toHaveBeenCalledTimes(1);
     const data = c.ok.mock.calls[0][0];
-    expect(data.pending).toBe(1);
+    expect(data.checks).toContain("1 pending");
   });
 
   it("returns CTA for pending checks", async () => {
@@ -60,7 +60,12 @@ describe("ciCommand.run", () => {
   it("returns CTA for failing checks", async () => {
     const c = makeCtx();
     mockResolvePR.mockResolvedValue({ prNumber: 42, prUrl: "url" });
-    mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 0, failing: 1, failures: [{ name: "test", conclusion: "failure", html_url: "u", log: "err" }] });
+    mockFetchCI.mockResolvedValue({
+      ...baseStatus,
+      pending: 0,
+      failing: 1,
+      failures: [{ name: "test", conclusion: "failure", html_url: "u", log: "err" }],
+    });
 
     await ciCommand.run(c);
     const meta = c.ok.mock.calls[0][1];
@@ -91,7 +96,12 @@ describe("ciCommand.run", () => {
     const c = makeCtx();
     c.options.watch = true;
     mockResolvePR.mockResolvedValue({ prNumber: 42, prUrl: "url" });
-    mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 0, failing: 1, failures: [{ name: "x", conclusion: "failure", html_url: "u", log: "e" }] });
+    mockFetchCI.mockResolvedValue({
+      ...baseStatus,
+      pending: 0,
+      failing: 1,
+      failures: [{ name: "x", conclusion: "failure", html_url: "u", log: "e" }],
+    });
 
     await ciCommand.run(c);
     const data = c.ok.mock.calls[0][0];

@@ -33,6 +33,8 @@ const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s?/;
 const GROUP_MARKERS = /^##\[(group|endgroup|command|section)\]/;
 const NOISE_RE =
   /^(##\[debug\]|##\[notice\]|##\[save-state\]|##\[add-matcher\]|##\[remove-matcher\]|##\[set-output\]|##\[set-env\]|##\[add-path\]|##\[warning\]Couldn't find any|Downloading |Download action repository|Complete job name:|shell: \/|error: script ".*" exited with code|\$ )/;
+// RTK "failure focus": strip passing test/check lines, keep only failures
+const PASSING_LINE_RE = /^( *✓ | *✔ | *PASS | *√ | *ok \d| *\. |\s*\d+ passing)/;
 
 function parseJobId(htmlUrl: string): string | null {
   const m = htmlUrl.match(/\/job\/(\d+)/);
@@ -65,6 +67,7 @@ function filterLog(raw: string): string {
     .map((l) => l.replace(TIMESTAMP_RE, "")) // strip timestamps
     .filter((l) => !GROUP_MARKERS.test(l)) // strip ##[group] markers
     .filter((l) => !NOISE_RE.test(l)) // strip debug/notice noise
+    .filter((l) => !PASSING_LINE_RE.test(l)) // strip passing test lines (failure focus)
     .map((l) => l.replace(/^##\[error\]/, "")) // strip ##[error] prefix, keep content
     .map((l) => l.replace(/^##\[warning\]/, "")) // strip ##[warning] prefix, keep content
     .filter((l) => l.trim() !== "") // strip blank lines

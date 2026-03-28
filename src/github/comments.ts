@@ -198,7 +198,8 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
       user: comment.user?.login,
       isBot: isBot(comment.user?.login),
       path: comment.path,
-      line: comment.line ?? comment.original_line,
+      // oxlint-disable-next-line typescript/prefer-nullish-coalescing -- 0 is "no line", intentional falsy check
+      line: comment.line || comment.original_line,
       diffHunk: comment.diff_hunk ?? null,
       body: cleanBody(comment.body),
       createdAt: comment.created_at,
