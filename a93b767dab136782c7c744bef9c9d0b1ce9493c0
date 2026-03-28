@@ -1,0 +1,31 @@
+package.json
+  e009581148d72631 5,7-28,62
+LICENSE
+  e009581148d72631 1-21
+.github/workflows/publish.yml
+  e009581148d72631 11,27-32,39-46
+README.md
+  e009581148d72631 3,5,9,12,15,17,19-21,23,25,27-28,31,33,36,39,42,45,48-49,51-52,54-55,57-58,60-64,67,70-79,82,85-86,89,91,93-94,96,99,102,104-112,114,116,123,129-131,133-135,139-141,143-147,149-152
+marketplace.json
+  e009581148d72631 1-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "a93b767dab136782c7c744bef9c9d0b1ce9493c0",
+  "prompts": {
+    "e009581148d72631": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f51e534-2a01-488e-a0b8-9ae6cf077596",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 156,
+      "total_deletions": 67,
+      "accepted_lines": 163,
+      "overriden_lines": 0
+    }
+  }
+}
