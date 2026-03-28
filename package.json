@@ -1,7 +1,7 @@
 {
   "name": "bellwether",
   "type": "module",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Drive GitHub PRs to merge-ready: watch CI, fix failures, resolve review comments.",
   "private": false,
   "author": {
