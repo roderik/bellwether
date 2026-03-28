@@ -8,7 +8,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -24,10 +24,23 @@ jobs:
       - run: bun check
 
       - name: Set version from tag
-        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm pkg set version="$VERSION"
+          # Update plugin manifest and marketplace versions
+          jq --arg v "$VERSION" '.version = $v' .claude-plugin/plugin.json > .claude-plugin/plugin.tmp && mv .claude-plugin/plugin.tmp .claude-plugin/plugin.json
+          jq --arg v "$VERSION" '.plugins.bellwether.version = $v' marketplace.json > marketplace.tmp && mv marketplace.tmp marketplace.json
 
       - run: bunx zile publish:prepare
 
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Commit release assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json .claude-plugin/plugin.json marketplace.json
+          git diff --cached --quiet || git commit -m "chore(release): sync version to ${GITHUB_REF_NAME} [skip ci]"
+          git push origin HEAD:main

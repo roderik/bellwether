@@ -1,41 +1,97 @@
 # bellwether
 
-Monitor GitHub PRs — review comments and CI status. Built with [incur](https://github.com/wevm/incur).
+Drive GitHub PRs to merge-ready: watch CI, fix failures, resolve review comments. Self-contained watch loop that keeps going until `pr.ready=true`.
+
+Built with [incur](https://github.com/wevm/incur).
 
 ## Install
+
+### Claude Code plugin
+
+```bash
+claude plugin install bellwether
+```
+
+Skills are namespaced as `/bellwether:bellwether`.
+
+### npx skills
+
+```bash
+npx skills add roderik/bellwether
+```
+
+Installs the skill into `.claude/skills/bellwether/`.
+
+### incur skills
+
+```bash
+npx -y bellwether@latest skills add
+```
+
+Auto-generates skill files from the CLI command definitions.
+
+### CLI only (no skill)
 
 ```bash
 npm install -g bellwether
 ```
 
+Or run without installing:
+
+```bash
+npx -y bellwether@latest check
+```
+
 ## Usage
 
 ```bash
-# List review comments for the current branch's PR
-bellwether reviews
+# CI status + review comments + merge state
+npx -y bellwether@latest check
 
-# Show CI status
-bellwether ci
+# Watch until CI completes
+npx -y bellwether@latest check --watch
 
-# Watch CI until all checks complete
-bellwether ci --watch
+# Show only unresolved reviews
+npx -y bellwether@latest check --unresolved
 
-# Show unresolved bot comments
-bellwether reviews --unresolved --bots-only
+# Reply to a review comment and resolve
+npx -y bellwether@latest check --reply "456:Fixed in abc1234" --resolve
 
-# Reply to a comment
-bellwether reviews --reply "12345:Fixed in latest commit"
+# Full detail for a specific comment
+npx -y bellwether@latest check --detail 456
 
 # Full help
-bellwether --help
+npx -y bellwether@latest check --help
+```
+
+## Output
+
+```
+pr:
+  state: open
+  mergeable: clean
+  ready: true
+ci:
+  sha: abc1234
+  checks: "3 total, 3 passing, 0 failing, 0 pending"
+  passed: "build, lint, test"
+reviews:
+  total: "0 unresolved, 0 unanswered"
+```
+
+When CI fails, the output includes the actual error log (filtered, not raw GitHub metadata):
+
+```
+ci:
+  FAIL check: "TypeError: Cannot find name 'fetch'..."
 ```
 
 ## Development
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) (used as package manager and dev runtime)
-- Node.js >= 18 (the published package runs on Node)
+- [Bun](https://bun.sh) (package manager and dev runtime)
+- Node.js >= 22 (the published package runs on Node)
 
 ### Setup
 
@@ -43,83 +99,54 @@ bellwether --help
 bun install
 ```
 
-### Dev mode
+### Commands
 
 ```bash
-bun run dev
+bun run dev              # zile dev — symlinks dist/ to src/
+bun src/bin.ts check     # run directly from source
+bun run build            # compile to dist/
+bun check                # oxlint with type-aware rules
+bun run test             # vitest
+bun run test:coverage    # vitest with v8 coverage
+bun run format           # oxfmt
 ```
 
-This runs `zile dev`, which creates symlinks from `dist/` back to `src/`. The `bin` field in `package.json` points to `dist/bin.js`, so after running dev mode you can link the package and the `bellwether` command resolves directly to your TypeScript source:
+### Publishing
 
-```bash
-bun link          # registers the package locally
-bellwether reviews   # runs your source via the dist/ symlinks
-```
-
-Changes to source files take effect immediately — no rebuild needed.
-
-### Running directly
-
-During development you can also skip linking and run the source entry point:
-
-```bash
-bun src/bin.ts reviews
-bun src/bin.ts ci --watch
-```
-
-### Build
-
-```bash
-bun run build
-```
-
-Compiles TypeScript to `dist/` via [zile](https://github.com/wevm/zile) (tsc wrapper). Output is standard ESM that runs on Node.js without Bun.
-
-### Lint
-
-```bash
-bun check
-```
-
-Runs [oxlint](https://oxc.rs) with type-aware rules.
-
-### Format
-
-```bash
-bun run format
-```
-
-Runs [oxfmt](https://oxc.rs).
-
-## Publishing
-
-Publishing is automated via GitHub Actions. To release:
+Automated via GitHub Actions on tag push:
 
 ```bash
 git tag v0.1.0
 git push --tags
 ```
 
-The workflow sets the `package.json` version from the tag, builds with `zile publish:prepare`, and publishes to npm with provenance.
-
-Requires an `NPM_TOKEN` repository secret.
+The workflow sets the version in `package.json` and `.claude-plugin/plugin.json`, builds, publishes to npm with provenance, and commits the version bump back to main.
 
 ## Project structure
 
 ```
 src/
-  bin.ts              # CLI entry point (#!/usr/bin/env node)
-  cli.ts              # incur CLI definition, middleware, commands
-  context.ts          # Bootstrap (token, repo info) and PR resolution
+  bin.ts              # CLI entry point
+  cli.ts              # incur CLI definition
+  context.ts          # Bootstrap + PR resolution
   commands/
-    ci.ts             # `bellwether ci` — CI/check run status
-    reviews.ts        # `bellwether reviews` — review comments
+    check.ts          # unified check command (CI + reviews + merge state)
+    ci.ts             # CI data helpers (flatten, getCISection)
+    reviews.ts        # Review data helpers (list, detail, reply, watch)
   github/
     auth.ts           # GitHub token resolution
     fetch.ts          # Proxy-aware fetch + pagination
-    repo.ts           # Git/repo helpers
-    checks.ts         # GitHub Check Runs API
-    comments.ts       # GitHub PR comments + review threads
+    repo.ts           # Git/repo helpers + merge state
+    checks.ts         # Check Runs API + job log filtering
+    comments.ts       # PR comments + review threads + GraphQL resolve
     index.ts          # Re-exports
-dist/                 # Build output (gitignored)
+skills/
+  bellwether/
+    SKILL.md          # Agent skill (shared across all install channels)
+.claude-plugin/
+  plugin.json         # Claude Code plugin manifest
 ```
+
+## License
+
+[MIT](LICENSE)

@@ -2,7 +2,30 @@
   "name": "bellwether",
   "type": "module",
   "version": "0.0.1",
+  "description": "Drive GitHub PRs to merge-ready: watch CI, fix failures, resolve review comments.",
   "private": false,
+  "author": {
+    "name": "Roderik van der Veer",
+    "url": "https://github.com/roderik"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/roderik/bellwether.git"
+  },
+  "bugs": {
+    "url": "https://github.com/roderik/bellwether/issues"
+  },
+  "homepage": "https://github.com/roderik/bellwether#readme",
+  "keywords": [
+    "ci",
+    "pr",
+    "review",
+    "merge",
+    "github",
+    "claude",
+    "agent",
+    "skill"
+  ],
   "bin": {
     "bellwether": "./dist/bin.js",
     "bellwether.src": "./src/bin.ts"
@@ -36,6 +59,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },
+  "license": "MIT",
   "sideEffects": false,
   "exports": {}
 }

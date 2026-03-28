@@ -1,0 +1,13 @@
+{
+  "name": "bellwether",
+  "version": "1",
+  "plugins": {
+    "bellwether": {
+      "source": {
+        "source": "github",
+        "repo": "roderik/bellwether"
+      },
+      "version": "0.0.1"
+    }
+  }
+}
