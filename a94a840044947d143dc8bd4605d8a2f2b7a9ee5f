@@ -1,0 +1,31 @@
+src/commands/hook-check.ts
+  e009581148d72631 1-35
+hooks/hooks.json
+  e009581148d72631 1-29
+src/commands/hook-add.ts
+  e009581148d72631 1-139
+src/bin.ts
+  e009581148d72631 3-15
+package.json
+  e009581148d72631 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "a94a840044947d143dc8bd4605d8a2f2b7a9ee5f",
+  "prompts": {
+    "e009581148d72631": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f51e534-2a01-488e-a0b8-9ae6cf077596",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 256,
+      "total_deletions": 41,
+      "accepted_lines": 217,
+      "overriden_lines": 1
+    }
+  }
+}
