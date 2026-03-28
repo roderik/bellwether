@@ -186,10 +186,12 @@ describe("watchForComments", () => {
     mockFilter.mockReturnValueOnce([]);
 
     const newComment = { ...comment, id: 2 };
+    const graceComment = { ...comment, id: 3 };
     mockProcess.mockReturnValueOnce([newComment]);
     mockFilter.mockReturnValueOnce([newComment]);
-    mockProcess.mockReturnValueOnce([newComment]);
-    mockFilter.mockReturnValueOnce([newComment]);
+    // Grace period returns the original + a new one
+    mockProcess.mockReturnValueOnce([newComment, graceComment]);
+    mockFilter.mockReturnValueOnce([newComment, graceComment]);
 
     const promise = watchForComments(
       { owner: "o", repo: "r", prNumber: 1, token: "tok", proxyFetch: vi.fn() },
@@ -199,8 +201,8 @@ describe("watchForComments", () => {
     await vi.advanceTimersByTimeAsync(5100);
     const result = await promise;
 
-    expect(result.total).toBe(1);
-    expect(result.newComments).toHaveLength(1);
+    expect(result.total).toBe(2);
+    expect(result.newComments).toHaveLength(2);
     expect(result.timedOut).toBe(false);
     vi.useRealTimers();
   });

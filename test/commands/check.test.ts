@@ -193,6 +193,49 @@ describe("checkCommand.run", () => {
     expect(result.ci.allPassing).toBe(true);
   });
 
+  it("watch returns failing with CTA when all checks done", async () => {
+    const c = makeCtx({ watch: true });
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockGetCI.mockResolvedValue({
+      status: {
+        ...ciResult.status,
+        pending: 0,
+        failing: 1,
+        failures: [{ name: "x", conclusion: "failure", html_url: "u", log: "e" }],
+      },
+      flat: { ...ciResult.flat, "FAIL x": "e" },
+    } as any);
+    mockGetReviews.mockResolvedValue(reviewsResult);
+    mockFormatReviews.mockReturnValue(reviewsFlat);
+
+    await checkCommand.run(c);
+    const data = c.ok.mock.calls[0][0];
+    expect(data.ci.allPassing).toBe(false);
+    const meta = c.ok.mock.calls[0][1];
+    expect(meta.cta.description).toContain("Failed");
+  });
+
+  it("watch polls then succeeds", async () => {
+    vi.useFakeTimers();
+    const c = makeCtx({ watch: true, interval: 1 });
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockGetCI
+      .mockResolvedValueOnce(ciResult as any)
+      .mockResolvedValueOnce({
+        status: { ...ciResult.status, pending: 0, failing: 0 },
+        flat: ciResult.flat,
+      } as any);
+    mockGetReviews.mockResolvedValue(reviewsResult);
+    mockFormatReviews.mockReturnValue(reviewsFlat);
+
+    const promise = checkCommand.run(c);
+    await vi.advanceTimersByTimeAsync(1100);
+    const result = await promise;
+
+    expect(result.ci.allPassing).toBe(true);
+    vi.useRealTimers();
+  });
+
   it("watch times out", async () => {
     const c = makeCtx({ watch: true, timeout: 0 });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
@@ -203,5 +246,7 @@ describe("checkCommand.run", () => {
     await checkCommand.run(c);
     const data = c.ok.mock.calls[0][0];
     expect(data.ci.timedOut).toBe(true);
+    const meta = c.ok.mock.calls[0][1];
+    expect(meta.cta.description).toContain("Timed out");
   });
 });

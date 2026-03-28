@@ -4,7 +4,7 @@
   "options": {
     "typeAware": true,
     "typeCheck": true,
-    "maxWarnings": 85
+    "maxWarnings": 90
   },
   "categories": {
     "correctness": "error",

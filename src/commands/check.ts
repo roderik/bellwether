@@ -17,8 +17,8 @@ export const checkCommand = {
   }),
   options: z.object({
     watch: z.boolean().default(false).describe("Poll until CI completes"),
-    interval: z.coerce.number().default(15).describe("Poll interval in seconds"),
-    timeout: z.coerce.number().default(600).describe("Timeout in seconds"),
+    interval: z.coerce.number().default(30).describe("Poll interval in seconds"),
+    timeout: z.coerce.number().default(1800).describe("Timeout in seconds"),
     unresolved: z.boolean().default(false).describe("Show only unresolved comments"),
     unanswered: z.boolean().default(false).describe("Show only unanswered comments"),
     botsOnly: z.boolean().default(false).describe("Only bot comments"),

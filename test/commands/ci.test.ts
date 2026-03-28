@@ -1,6 +1,13 @@
-import { describe, it, expect } from "vitest";
-import { flatten } from "../../src/commands/ci.js";
+import { describe, it, expect, vi } from "vitest";
+import { flatten, getCISection } from "../../src/commands/ci.js";
 import { type CIStatus } from "../../src/github/checks.js";
+
+vi.mock("../../src/github/index.js", () => ({
+  fetchCIStatus: vi.fn(),
+}));
+
+import { fetchCIStatus } from "../../src/github/index.js";
+const mockFetchCI = vi.mocked(fetchCIStatus);
 
 const baseStatus: CIStatus = {
   sha: "abc",
@@ -61,5 +68,23 @@ describe("flatten", () => {
   it("merges extra fields", () => {
     const result = flatten(baseStatus, { allPassing: true });
     expect(result.allPassing).toBe(true);
+  });
+});
+
+describe("getCISection", () => {
+  it("fetches CI status and returns both raw and flat", async () => {
+    mockFetchCI.mockResolvedValue(baseStatus);
+    const ctx = { token: "tok", repoInfo: { owner: "o", repo: "r" }, proxyFetch: vi.fn() };
+    const result = await getCISection(ctx, 1);
+    expect(result.status).toEqual(baseStatus);
+    expect(result.flat.sha).toBe("abc");
+    expect(result.flat.checks).toContain("3 total");
+  });
+
+  it("passes headSha to fetchCIStatus", async () => {
+    mockFetchCI.mockResolvedValue(baseStatus);
+    const ctx = { token: "tok", repoInfo: { owner: "o", repo: "r" }, proxyFetch: vi.fn() };
+    await getCISection(ctx, 1, "sha123");
+    expect(mockFetchCI).toHaveBeenCalledWith("o", "r", 1, "tok", expect.anything(), "sha123");
   });
 });
