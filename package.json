@@ -1,11 +1,11 @@
 {
-  "name": "sheperd",
+  "name": "bellwether",
   "type": "module",
   "version": "0.0.1",
   "private": false,
   "bin": {
-    "sheperd": "./dist/bin.js",
-    "sheperd.src": "./src/bin.ts"
+    "bellwether": "./dist/bin.js",
+    "bellwether.src": "./src/bin.ts"
   },
   "files": [
     "dist",

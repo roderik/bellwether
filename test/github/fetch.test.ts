@@ -10,7 +10,9 @@ beforeEach(() => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function mockProxyFetch(responses: { ok: boolean; status: number; data: any; headers?: Record<string, string> }[]) {
+function mockProxyFetch(
+  responses: { ok: boolean; status: number; data: any; headers?: Record<string, string> }[],
+) {
   let callIdx = 0;
   return vi.fn(async () => {
     const resp = responses[callIdx++];
@@ -81,21 +83,33 @@ describe("ghFetch", () => {
     let capturedOptions: any;
     const pf = vi.fn(async (_url: string, options: any) => {
       capturedOptions = options;
-      return { ok: true, status: 200, headers: { get: () => null }, text: async () => "", json: async () => ({}) };
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => "",
+        json: async () => ({}),
+      };
     });
 
     await ghFetch("https://api.github.com/test", "my-token", pf);
 
     expect(capturedOptions.headers.Authorization).toBe("Bearer my-token");
     expect(capturedOptions.headers.Accept).toBe("application/vnd.github.v3+json");
-    expect(capturedOptions.headers["User-Agent"]).toBe("sheperd");
+    expect(capturedOptions.headers["User-Agent"]).toBe("bellwether");
   });
 
   it("merges custom headers", async () => {
     let capturedOptions: any;
     const pf = vi.fn(async (_url: string, options: any) => {
       capturedOptions = options;
-      return { ok: true, status: 200, headers: { get: () => null }, text: async () => "", json: async () => ({}) };
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => "",
+        json: async () => ({}),
+      };
     });
 
     await ghFetch("https://api.github.com/test", "tok", pf, {
@@ -115,16 +129,19 @@ describe("ghFetch", () => {
 
 describe("fetchAllPages", () => {
   it("fetches single page", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: [{ id: 1 }, { id: 2 }] },
-    ]);
+    const pf = mockProxyFetch([{ ok: true, status: 200, data: [{ id: 1 }, { id: 2 }] }]);
     const result = await fetchAllPages("https://api.github.com/test", "tok", pf);
     expect(result).toEqual([{ id: 1 }, { id: 2 }]);
   });
 
   it("follows pagination via Link header", async () => {
     const pf = mockProxyFetch([
-      { ok: true, status: 200, data: [{ id: 1 }], headers: { link: '<https://api.github.com/test?page=2>; rel="next"' } },
+      {
+        ok: true,
+        status: 200,
+        data: [{ id: 1 }],
+        headers: { link: '<https://api.github.com/test?page=2>; rel="next"' },
+      },
       { ok: true, status: 200, data: [{ id: 2 }] },
     ]);
     const result = await fetchAllPages("https://api.github.com/test", "tok", pf);
@@ -133,16 +150,14 @@ describe("fetchAllPages", () => {
   });
 
   it("throws on API error", async () => {
-    const pf = mockProxyFetch([
-      { ok: false, status: 403, data: { message: "rate limited" } },
-    ]);
-    await expect(fetchAllPages("https://api.github.com/test", "tok", pf)).rejects.toThrow("API request failed: 403");
+    const pf = mockProxyFetch([{ ok: false, status: 403, data: { message: "rate limited" } }]);
+    await expect(fetchAllPages("https://api.github.com/test", "tok", pf)).rejects.toThrow(
+      "API request failed: 403",
+    );
   });
 
   it("handles empty result", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: [] },
-    ]);
+    const pf = mockProxyFetch([{ ok: true, status: 200, data: [] }]);
     const result = await fetchAllPages("https://api.github.com/test", "tok", pf);
     expect(result).toEqual([]);
   });

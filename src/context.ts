@@ -64,7 +64,7 @@ export async function resolvePR(
   const prs = await listOpenPRs(repoInfo.owner, repoInfo.repo, token, proxyFetch);
   if (prs.length === 0) {
     throw new Error(
-      "No open PRs found. Fix: pass a PR number as argument, e.g. `sheperd reviews 123`.",
+      "No open PRs found. Fix: pass a PR number as argument, e.g. `bellwether check 123`.",
     );
   }
 

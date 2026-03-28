@@ -1,33 +1,33 @@
-# sheperd
+# bellwether
 
 Monitor GitHub PRs — review comments and CI status. Built with [incur](https://github.com/wevm/incur).
 
 ## Install
 
 ```bash
-npm install -g sheperd
+npm install -g bellwether
 ```
 
 ## Usage
 
 ```bash
 # List review comments for the current branch's PR
-sheperd reviews
+bellwether reviews
 
 # Show CI status
-sheperd ci
+bellwether ci
 
 # Watch CI until all checks complete
-sheperd ci --watch
+bellwether ci --watch
 
 # Show unresolved bot comments
-sheperd reviews --unresolved --bots-only
+bellwether reviews --unresolved --bots-only
 
 # Reply to a comment
-sheperd reviews --reply "12345:Fixed in latest commit"
+bellwether reviews --reply "12345:Fixed in latest commit"
 
 # Full help
-sheperd --help
+bellwether --help
 ```
 
 ## Development
@@ -49,11 +49,11 @@ bun install
 bun run dev
 ```
 
-This runs `zile dev`, which creates symlinks from `dist/` back to `src/`. The `bin` field in `package.json` points to `dist/bin.js`, so after running dev mode you can link the package and the `sheperd` command resolves directly to your TypeScript source:
+This runs `zile dev`, which creates symlinks from `dist/` back to `src/`. The `bin` field in `package.json` points to `dist/bin.js`, so after running dev mode you can link the package and the `bellwether` command resolves directly to your TypeScript source:
 
 ```bash
 bun link          # registers the package locally
-sheperd reviews   # runs your source via the dist/ symlinks
+bellwether reviews   # runs your source via the dist/ symlinks
 ```
 
 Changes to source files take effect immediately — no rebuild needed.
@@ -112,8 +112,8 @@ src/
   cli.ts              # incur CLI definition, middleware, commands
   context.ts          # Bootstrap (token, repo info) and PR resolution
   commands/
-    ci.ts             # `sheperd ci` — CI/check run status
-    reviews.ts        # `sheperd reviews` — review comments
+    ci.ts             # `bellwether ci` — CI/check run status
+    reviews.ts        # `bellwether reviews` — review comments
   github/
     auth.ts           # GitHub token resolution
     fetch.ts          # Proxy-aware fetch + pagination

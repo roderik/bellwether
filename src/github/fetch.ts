@@ -6,16 +6,13 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const USER_AGENT = "sheperd";
+const USER_AGENT = "bellwether";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type ProxyFetch = (
-  url: string,
-  options?: ProxyFetchOptions,
-) => Promise<ProxyFetchResponse>;
+export type ProxyFetch = (url: string, options?: ProxyFetchOptions) => Promise<ProxyFetchResponse>;
 
 export interface ProxyFetchOptions {
   method?: string;
@@ -44,7 +41,9 @@ function parseHeaderMap(rawHeaders: string): HeaderMap {
   const map = new Map<string, string>();
   for (const line of lines) {
     const idx = line.indexOf(":");
-    if (idx === -1) {continue;}
+    if (idx === -1) {
+      continue;
+    }
     const key = line.slice(0, idx).trim().toLowerCase();
     const value = line.slice(idx + 1).trim();
     map.set(key, value);
@@ -63,7 +62,9 @@ function parseLastHeaderBlock(headerContent: string): string {
     .filter(Boolean);
   for (let i = blocks.length - 1; i >= 0; i -= 1) {
     const block = blocks[i];
-    if (block?.startsWith("HTTP/")) {return block;}
+    if (block?.startsWith("HTTP/")) {
+      return block;
+    }
   }
   return "";
 }
@@ -74,7 +75,7 @@ function parseLastHeaderBlock(headerContent: string): string {
 
 function createCurlFetch(): ProxyFetch {
   return async (url: string, options: ProxyFetchOptions = {}) => {
-    const tempDir = mkdtempSync(join(tmpdir(), "sheperd-"));
+    const tempDir = mkdtempSync(join(tmpdir(), "bellwether-"));
     const headersFile = join(tempDir, "headers.txt");
     const bodyFile = join(tempDir, "body.txt");
 
@@ -209,7 +210,9 @@ export async function fetchAllPages<T>(
     nextUrl = null;
     if (linkHeader) {
       const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-      if (nextMatch?.[1]) {nextUrl = nextMatch[1];}
+      if (nextMatch?.[1]) {
+        nextUrl = nextMatch[1];
+      }
     }
   }
 

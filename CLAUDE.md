@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is this?
 
-sheperd is a CLI tool that monitors GitHub PRs — review comments and CI status. Built with [incur](https://github.com/wevm/incur) (a framework for CLIs that work for both AI agents and humans) and [@clack/prompts](https://github.com/bombshell-dev/clack) for interactive UI.
+bellwether is a CLI tool that monitors GitHub PRs — review comments and CI status. Built with [incur](https://github.com/wevm/incur) (a framework for CLIs that work for both AI agents and humans) and [@clack/prompts](https://github.com/bombshell-dev/clack) for interactive UI.
 
 ## Commands
 

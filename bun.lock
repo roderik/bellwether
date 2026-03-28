@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "sheperd",
+      "name": "bellwether",
       "dependencies": {
         "@clack/prompts": "^1.1.0",
         "incur": "^0.3.13",

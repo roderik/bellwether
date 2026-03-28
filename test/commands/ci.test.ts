@@ -1,30 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
+import { flatten } from "../../src/commands/ci.js";
+import { type CIStatus } from "../../src/github/checks.js";
 
-vi.mock("../../src/context.js", () => ({
-  resolvePR: vi.fn(),
-}));
-
-vi.mock("../../src/github/index.js", () => ({
-  fetchCIStatus: vi.fn(),
-}));
-
-import { resolvePR } from "../../src/context.js";
-import { fetchCIStatus } from "../../src/github/index.js";
-import { ciCommand } from "../../src/commands/ci.js";
-
-const mockResolvePR = vi.mocked(resolvePR);
-const mockFetchCI = vi.mocked(fetchCIStatus);
-
-function makeCtx() {
-  return {
-    var: { ctx: { token: "tok", repoInfo: { owner: "o", repo: "r" }, proxyFetch: vi.fn() } },
-    args: { pr: undefined as number | undefined },
-    options: { watch: false, interval: 1, timeout: 5 },
-    ok: vi.fn((data: any, _meta?: any) => data),
-  };
-}
-
-const baseStatus = {
+const baseStatus: CIStatus = {
   sha: "abc",
   total: 3,
   passing: 2,
@@ -35,106 +13,53 @@ const baseStatus = {
   failures: [],
 };
 
-describe("ciCommand.run", () => {
-  it("returns single fetch result", async () => {
-    const c = makeCtx();
-    mockResolvePR.mockResolvedValue({ prNumber: 42, prUrl: "url" });
-    mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 1 });
-
-    await ciCommand.run(c);
-    expect(c.ok).toHaveBeenCalledTimes(1);
-    const data = c.ok.mock.calls[0][0];
-    expect(data.checks).toContain("1 pending");
+describe("flatten", () => {
+  it("produces checks summary string", () => {
+    const result = flatten(baseStatus);
+    expect(result.checks).toBe("3 total, 2 passing, 0 failing, 1 pending");
+    expect(result.sha).toBe("abc");
   });
 
-  it("returns CTA for pending checks", async () => {
-    const c = makeCtx();
-    mockResolvePR.mockResolvedValue({ prNumber: 42, prUrl: "url" });
-    mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 1 });
-
-    await ciCommand.run(c);
-    const meta = c.ok.mock.calls[0][1];
-    expect(meta.cta.description).toContain("still running");
+  it("includes passed names when present", () => {
+    const result = flatten(baseStatus);
+    expect(result.passed).toBe("build, lint");
   });
 
-  it("returns CTA for failing checks", async () => {
-    const c = makeCtx();
-    mockResolvePR.mockResolvedValue({ prNumber: 42, prUrl: "url" });
-    mockFetchCI.mockResolvedValue({
+  it("includes in_progress names when present", () => {
+    const result = flatten(baseStatus);
+    expect(result.in_progress).toBe("test");
+  });
+
+  it("omits passed when empty", () => {
+    const result = flatten({ ...baseStatus, passed: [], passing: 0 });
+    expect(result.passed).toBeUndefined();
+  });
+
+  it("omits in_progress when empty", () => {
+    const result = flatten({ ...baseStatus, in_progress: [], pending: 0 });
+    expect(result.in_progress).toBeUndefined();
+  });
+
+  it("adds FAIL keys for failures", () => {
+    const result = flatten({
       ...baseStatus,
-      pending: 0,
       failing: 1,
-      failures: [{ name: "test", conclusion: "failure", html_url: "u", log: "err" }],
+      failures: [{ name: "test", conclusion: "failure", html_url: "u", log: "error output" }],
     });
-
-    await ciCommand.run(c);
-    const meta = c.ok.mock.calls[0][1];
-    expect(meta.cta.description).toContain("failing");
+    expect(result["FAIL test"]).toBe("error output");
   });
 
-  it("returns no CTA when all passing", async () => {
-    const c = makeCtx();
-    mockResolvePR.mockResolvedValue({ prNumber: 42, prUrl: "url" });
-    mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 0, failing: 0 });
-
-    await ciCommand.run(c);
-    const meta = c.ok.mock.calls[0][1];
-    expect(meta.cta).toBeUndefined();
-  });
-
-  it("watch mode: returns immediately when all passing", async () => {
-    const c = makeCtx();
-    c.options.watch = true;
-    mockResolvePR.mockResolvedValue({ prNumber: 42, prUrl: "url" });
-    mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 0, failing: 0 });
-
-    const result = await ciCommand.run(c);
-    expect(result.allPassing).toBe(true);
-  });
-
-  it("watch mode: returns when failing detected with no pending", async () => {
-    const c = makeCtx();
-    c.options.watch = true;
-    mockResolvePR.mockResolvedValue({ prNumber: 42, prUrl: "url" });
-    mockFetchCI.mockResolvedValue({
+  it("uses conclusion as prefix for non-failure conclusions", () => {
+    const result = flatten({
       ...baseStatus,
-      pending: 0,
       failing: 1,
-      failures: [{ name: "x", conclusion: "failure", html_url: "u", log: "e" }],
+      failures: [{ name: "slow", conclusion: "timed_out", html_url: "u", log: "timeout" }],
     });
-
-    await ciCommand.run(c);
-    const data = c.ok.mock.calls[0][0];
-    expect(data.allPassing).toBe(false);
+    expect(result["TIMED_OUT slow"]).toBe("timeout");
   });
 
-  it("watch mode: polls then succeeds", async () => {
-    vi.useFakeTimers();
-    const c = makeCtx();
-    c.options.watch = true;
-    c.options.interval = 1;
-    mockResolvePR.mockResolvedValue({ prNumber: 42, prUrl: "url" });
-    mockFetchCI
-      .mockResolvedValueOnce({ ...baseStatus, pending: 1 }) // first poll: still pending
-      .mockResolvedValueOnce({ ...baseStatus, pending: 0, failing: 0 }); // second poll: all pass
-
-    const promise = ciCommand.run(c);
-    await vi.advanceTimersByTimeAsync(1100);
-    const result = await promise;
-
+  it("merges extra fields", () => {
+    const result = flatten(baseStatus, { allPassing: true });
     expect(result.allPassing).toBe(true);
-    vi.useRealTimers();
-  });
-
-  it("watch mode: times out", async () => {
-    const c = makeCtx();
-    c.options.watch = true;
-    c.options.timeout = 0; // immediate timeout
-    mockResolvePR.mockResolvedValue({ prNumber: 42, prUrl: "url" });
-    mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 1 });
-
-    await ciCommand.run(c);
-    const data = c.ok.mock.calls[0][0];
-    expect(data.timedOut).toBe(true);
   });
 });

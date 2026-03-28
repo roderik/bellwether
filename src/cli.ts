@@ -1,9 +1,8 @@
 import { Cli, z } from "incur";
 import { bootstrap, type Context } from "./context.js";
-import { reviewsCommand } from "./commands/reviews.js";
-import { ciCommand } from "./commands/ci.js";
+import { checkCommand } from "./commands/check.js";
 
-const cli = Cli.create("sheperd", {
+const cli = Cli.create("bellwether", {
   version: "0.0.1",
   description: "Monitor GitHub PRs — review comments and CI status",
   vars: z.object({
@@ -21,9 +20,9 @@ const cli = Cli.create("sheperd", {
   sync: {
     include: ["_root"],
     suggestions: [
-      "show review comments for this PR",
-      "check CI status for PR 123",
-      "watch for new bot comments on this PR",
+      "check CI and reviews for this PR",
+      "check CI and reviews for PR 123",
+      "watch CI until complete",
       "reply to review comment 12345",
     ],
   },
@@ -34,8 +33,7 @@ cli.use(async (c, next) => {
   await next();
 });
 
-cli.command("reviews", reviewsCommand as any);
-cli.command("ci", ciCommand as any);
+cli.command("check", checkCommand as any);
 
 export { cli };
 export default cli;
