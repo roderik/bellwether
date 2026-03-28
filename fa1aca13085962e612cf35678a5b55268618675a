@@ -1,0 +1,33 @@
+SKILL.md
+  e009581148d72631 4-7,13,21,23-24,27-45,53,55,59,67-69,77,79-81,83,85,87,90-99,102,104,106,112,117,119-121
+src/github/index.ts
+  e009581148d72631 15,21,35
+src/commands/check.ts
+  e009581148d72631 3,13-28,86-98,149-156,162-165,169,178,196,218-220,226-229,232
+test/github/repo.test.ts
+  e009581148d72631 8,194-287
+src/github/repo.ts
+  e009581148d72631 107-146
+test/commands/check.test.ts
+  e009581148d72631 7-10,24,35,86-97,102,118,132,153,207,222,246,265,276-372
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "fa1aca13085962e612cf35678a5b55268618675a",
+  "prompts": {
+    "e009581148d72631": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f51e534-2a01-488e-a0b8-9ae6cf077596",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 379,
+      "total_deletions": 43,
+      "accepted_lines": 375,
+      "overriden_lines": 0
+    }
+  }
+}
