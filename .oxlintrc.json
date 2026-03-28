@@ -1,40 +1,114 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": null,
-  "categories": {},
-  "rules": {},
-  "settings": {
-    "jsx-a11y": {
-      "polymorphicPropName": null,
-      "components": {},
-      "attributes": {}
+  "plugins": ["typescript", "import", "unicorn", "oxc", "promise", "node", "vitest"],
+  "options": {
+    "typeAware": true,
+    "typeCheck": true,
+    "maxWarnings": 90
+  },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "style": "error",
+    "pedantic": "error"
+  },
+  "rules": {
+    "curly": "error",
+
+    "capitalized-comments": "off",
+    "no-magic-numbers": "off",
+    "sort-keys": "off",
+    "sort-imports": "off",
+    "no-void": "off",
+    "no-inline-comments": "off",
+    "no-ternary": "off",
+    "no-nested-ternary": "off",
+    "no-plusplus": "off",
+    "one-var": "off",
+    "no-bitwise": "off",
+    "no-continue": "off",
+    "no-undefined": "off",
+    "no-await-in-loop": "off",
+    "no-promise-executor-return": "off",
+    "func-style": "off",
+    "id-length": "off",
+    "init-declarations": "off",
+    "max-statements": "off",
+    "max-params": "off",
+    "max-lines": "off",
+    "max-lines-per-function": "off",
+    "prefer-destructuring": "off",
+    "prefer-template": "off",
+    "require-await": "off",
+
+    "import/no-nodejs-modules": "off",
+    "import/no-named-export": "off",
+    "import/no-default-export": "off",
+    "import/max-dependencies": "off",
+    "import/extensions": "off",
+    "import/group-exports": "off",
+    "import/exports-last": "off",
+    "import/prefer-default-export": "off",
+    "import/no-namespace": "off",
+    "import/consistent-type-specifier-style": ["error", "prefer-inline"],
+
+    "unicorn/no-null": "off",
+    "unicorn/filename-case": "off",
+    "unicorn/prevent-abbreviations": "off",
+    "unicorn/no-process-exit": "off",
+    "unicorn/prefer-top-level-await": "off",
+    "unicorn/text-encoding-identifier-case": "off",
+    "unicorn/no-useless-undefined": "off",
+    "unicorn/no-nested-ternary": "off",
+    "unicorn/no-array-callback-reference": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/escape-case": "off",
+    "unicorn/numeric-separators-style": "off",
+
+    "promise/avoid-new": "off",
+    "promise/param-names": "off",
+    "promise/prefer-await-to-callbacks": "off",
+
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unnecessary-condition": ["error", { "allowConstantLoopConditions": true }],
+    "typescript/prefer-nullish-coalescing": "error",
+    "typescript/array-type": "error",
+    "typescript/require-await": "off",
+    "typescript/no-unsafe-assignment": "off",
+    "typescript/no-unsafe-member-access": "off",
+    "typescript/no-unsafe-call": "off",
+    "typescript/no-unsafe-return": "off",
+    "typescript/no-unsafe-argument": "off",
+    "typescript/no-unsafe-type-assertion": "off",
+    "typescript/strict-boolean-expressions": "off",
+
+    "vitest/prefer-describe-function-title": "off",
+    "vitest/prefer-to-be-truthy": "off",
+    "vitest/prefer-to-be-falsy": "off",
+    "vitest/prefer-import-in-mock": "off",
+    "vitest/no-importing-vitest-globals": "off",
+    "vitest/prefer-expect-type-of": "off",
+    "vitest/prefer-called-once": "off"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.ts"],
+      "rules": {
+        "no-undef": "off",
+        "no-redeclare": "off"
+      }
     },
-    "next": {
-      "rootDir": []
-    },
-    "react": {
-      "formComponents": [],
-      "linkComponents": [],
-      "version": null,
-      "componentWrapperFunctions": []
-    },
-    "jsdoc": {
-      "ignorePrivate": false,
-      "ignoreInternal": false,
-      "ignoreReplacesDocs": true,
-      "overrideReplacesDocs": true,
-      "augmentsExtendsReplacesDocs": false,
-      "implementsReplacesDocs": false,
-      "exemptDestructuredRootsFromChecks": false,
-      "tagNamePreference": {}
-    },
-    "vitest": {
-      "typecheck": false
+    {
+      "files": ["test/**/*.ts"],
+      "rules": {
+        "import/first": "off"
+      }
     }
-  },
-  "env": {
-    "builtin": true
-  },
-  "globals": {},
-  "ignorePatterns": []
+  ],
+  "ignorePatterns": ["dist", "coverage", "node_modules"]
 }

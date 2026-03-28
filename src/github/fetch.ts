@@ -1,16 +1,18 @@
 import { join } from "node:path";
-import { $ } from "bun";
+import { tmpdir } from "node:os";
+import { mkdtempSync } from "node:fs";
+import { readFile, rm } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 
-const USER_AGENT = "sheperd";
+const require = createRequire(import.meta.url);
+const USER_AGENT = "bellwether";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type ProxyFetch = (
-  url: string,
-  options?: ProxyFetchOptions,
-) => Promise<ProxyFetchResponse>;
+export type ProxyFetch = (url: string, options?: ProxyFetchOptions) => Promise<ProxyFetchResponse>;
 
 export interface ProxyFetchOptions {
   method?: string;
@@ -27,6 +29,7 @@ export interface ProxyFetchResponse {
   status: number;
   headers: HeaderMap;
   text(): Promise<string>;
+  // eslint-disable-next-line typescript/no-explicit-any -- GitHub API responses are untyped; callers cast at call sites
   json(): Promise<any>;
 }
 
@@ -39,7 +42,9 @@ function parseHeaderMap(rawHeaders: string): HeaderMap {
   const map = new Map<string, string>();
   for (const line of lines) {
     const idx = line.indexOf(":");
-    if (idx === -1) continue;
+    if (idx === -1) {
+      continue;
+    }
     const key = line.slice(0, idx).trim().toLowerCase();
     const value = line.slice(idx + 1).trim();
     map.set(key, value);
@@ -58,7 +63,9 @@ function parseLastHeaderBlock(headerContent: string): string {
     .filter(Boolean);
   for (let i = blocks.length - 1; i >= 0; i -= 1) {
     const block = blocks[i];
-    if (block?.startsWith("HTTP/")) return block;
+    if (block?.startsWith("HTTP/")) {
+      return block;
+    }
   }
   return "";
 }
@@ -69,7 +76,7 @@ function parseLastHeaderBlock(headerContent: string): string {
 
 function createCurlFetch(): ProxyFetch {
   return async (url: string, options: ProxyFetchOptions = {}) => {
-    const tempDir = (await $`mktemp -d`.text()).trim();
+    const tempDir = mkdtempSync(join(tmpdir(), "bellwether-"));
     const headersFile = join(tempDir, "headers.txt");
     const bodyFile = join(tempDir, "body.txt");
 
@@ -86,7 +93,7 @@ function createCurlFetch(): ProxyFetch {
       "--output",
       bodyFile,
       "--request",
-      options.method || "GET",
+      options.method ?? "GET",
       "--write-out",
       "%{http_code}",
     ];
@@ -103,15 +110,26 @@ function createCurlFetch(): ProxyFetch {
     args.push(String(url));
 
     try {
-      const result = Bun.spawnSync(["curl", ...args], {
-        stdout: "pipe",
-        stderr: "pipe",
+      const result = spawnSync("curl", args, {
+        encoding: "utf-8",
         timeout: 65_000,
       });
-      const statusCodeRaw = new TextDecoder().decode(result.stdout).trim();
+      if (result.error) {
+        throw new Error(`curl failed to start: ${result.error.message}`);
+      }
+      if (result.status !== 0) {
+        const stderr = String(result.stderr).trim();
+        throw new Error(
+          `curl exited with status ${String(result.status)}${stderr ? `: ${stderr}` : ""}`,
+        );
+      }
+      const statusCodeRaw = String(result.stdout).trim();
       const status = Number.parseInt(statusCodeRaw, 10);
-      const body = await Bun.file(bodyFile).text();
-      const headersRaw = await Bun.file(headersFile).text();
+      if (!statusCodeRaw || Number.isNaN(status)) {
+        throw new Error("curl did not return a valid HTTP status code");
+      }
+      const body = await readFile(bodyFile, "utf-8");
+      const headersRaw = await readFile(headersFile, "utf-8");
       const lastHeaderBlock = parseLastHeaderBlock(headersRaw);
 
       return {
@@ -126,7 +144,7 @@ function createCurlFetch(): ProxyFetch {
         },
       };
     } finally {
-      await $`rm -rf ${tempDir}`.quiet();
+      await rm(tempDir, { recursive: true, force: true });
     }
   };
 }
@@ -136,7 +154,7 @@ function createCurlFetch(): ProxyFetch {
 // ---------------------------------------------------------------------------
 
 export function getProxyFetch(): ProxyFetch {
-  const proxyUrl = Bun.env.HTTPS_PROXY || Bun.env.https_proxy;
+  const proxyUrl = process.env.HTTPS_PROXY ?? process.env.https_proxy;
   if (proxyUrl) {
     try {
       const { ProxyAgent, fetch: undiciFetch } = require("undici");
@@ -205,7 +223,9 @@ export async function fetchAllPages<T>(
     nextUrl = null;
     if (linkHeader) {
       const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-      if (nextMatch?.[1]) nextUrl = nextMatch[1];
+      if (nextMatch?.[1]) {
+        nextUrl = nextMatch[1];
+      }
     }
   }
 

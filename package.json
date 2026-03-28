@@ -1,18 +1,50 @@
 {
-  "name": "sheperd",
-  "module": "index.ts",
+  "name": "bellwether",
   "type": "module",
-  "private": true,
-  "bin": {
-    "sheperd": "./index.ts"
+  "version": "0.0.1",
+  "description": "Drive GitHub PRs to merge-ready: watch CI, fix failures, resolve review comments.",
+  "private": false,
+  "author": {
+    "name": "Roderik van der Veer",
+    "url": "https://github.com/roderik"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/roderik/bellwether.git"
+  },
+  "bugs": {
+    "url": "https://github.com/roderik/bellwether/issues"
+  },
+  "homepage": "https://github.com/roderik/bellwether#readme",
+  "keywords": [
+    "ci",
+    "pr",
+    "review",
+    "merge",
+    "github",
+    "claude",
+    "agent",
+    "skill"
+  ],
+  "bin": {
+    "bellwether": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "skills",
+    "hooks",
+    ".claude-plugin",
+    "SKILL.md"
+  ],
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/node": "latest",
+    "@vitest/coverage-v8": "^4.1.2",
     "oxfmt": "^0.42.0",
     "oxlint": "^1.57.0",
-    "oxlint-tsgolint": "^0.18.1"
-  },
-  "peerDependencies": {
+    "oxlint-tsgolint": "^0.18.1",
+    "vitest": "^4.1.2",
+    "zile": "latest",
     "typescript": "^6.0.2"
   },
   "dependencies": {
@@ -20,7 +52,14 @@
     "incur": "^0.3.13"
   },
   "scripts": {
+    "build": "zile",
+    "dev": "zile dev",
     "format": "oxfmt --write",
-    "check": "oxlint --type-aware --type-check"
-  }
+    "check": "oxlint",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {}
 }

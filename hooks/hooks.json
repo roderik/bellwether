@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git push*)",
+            "command": "npx -y bellwether@latest hook-check",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "if": "Bash(gh pr create*)",
+            "command": "npx -y bellwether@latest hook-check",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "if": "Bash(gh pr ready*)",
+            "command": "npx -y bellwether@latest hook-check",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

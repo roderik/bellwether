@@ -1,97 +1,44 @@
-import { z } from "incur";
-import { bootstrap, resolvePR } from "../context.ts";
-import { fetchCIStatus } from "../github/index.ts";
-import { c } from "../colors.ts";
-import { formatCIStatus, formatCISummary } from "../format/checks.ts";
+import { type Context } from "../context.js";
+import { fetchCIStatus, type CIStatus } from "../github/index.js";
 
-export const ciCommand = {
-  description: "Show CI/check run status for a PR",
-  args: z.object({
-    pr: z.coerce
-      .number()
-      .optional()
-      .describe("PR number (auto-detects from branch)"),
-  }),
-  options: z.object({
-    watch: z
-      .boolean()
-      .default(false)
-      .describe("Poll until all checks complete"),
-    interval: z.coerce
-      .number()
-      .default(15)
-      .describe("Poll interval in seconds"),
-    timeout: z.coerce
-      .number()
-      .default(600)
-      .describe("Timeout in seconds"),
-  }),
-  alias: { watch: "w", interval: "i" },
-  async run(ctx: any) {
-    const bctx = await bootstrap();
-    const { prNumber, prUrl } = await resolvePR(bctx, ctx.args.pr);
-    const { token, repoInfo, proxyFetch } = bctx;
-    const opts = ctx.options;
+export function flatten(
+  status: CIStatus,
+  extra?: Record<string, boolean>,
+): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {
+    sha: status.sha,
+    checks: `${status.total} total, ${status.passing} passing, ${status.failing} failing, ${status.pending} pending`,
+  };
+  if (status.passed.length > 0) {
+    out.passed = status.passed.join(", ");
+  }
+  if (status.in_progress.length > 0) {
+    out.in_progress = status.in_progress.join(", ");
+  }
+  for (const f of status.failures) {
+    const label =
+      f.conclusion === "failure" ? `FAIL ${f.name}` : `${f.conclusion.toUpperCase()} ${f.name}`;
+    out[label] = f.log;
+  }
+  if (extra) {
+    Object.assign(out, extra);
+  }
+  return out;
+}
 
-    if (opts.watch) {
-      console.log(
-        `${c.bold}Watching CI for PR #${prNumber}${c.reset} ${c.dim}${prUrl}${c.reset}`,
-      );
-      console.log(
-        `${c.dim}Polling every ${opts.interval}s, timeout ${opts.timeout}s${c.reset}\n`,
-      );
-
-      const start = Date.now();
-      while (true) {
-        const status = await fetchCIStatus(
-          repoInfo.owner,
-          repoInfo.repo,
-          prNumber,
-          token,
-          proxyFetch,
-        );
-        console.log(formatCIStatus(status));
-
-        const summary = formatCISummary(status);
-        if (summary.allPassing) {
-          console.log(`\n${c.green}All checks passed!${c.reset}`);
-          return { ...status, allPassing: true };
-        }
-        if (summary.anyFailing && !summary.anyPending) {
-          console.log(`\n${c.red}Some checks failed.${c.reset}`);
-          return { ...status, allPassing: false };
-        }
-
-        const elapsed = (Date.now() - start) / 1000;
-        if (elapsed >= opts.timeout) {
-          console.log(
-            `\n${c.yellow}Timeout reached (${opts.timeout}s).${c.reset}`,
-          );
-          return { ...status, timedOut: true };
-        }
-
-        console.log(
-          `\n${c.dim}Waiting ${opts.interval}s...${c.reset}\n`,
-        );
-        await Bun.sleep(opts.interval * 1000);
-      }
-    }
-
-    // Single fetch
-    const status = await fetchCIStatus(
-      repoInfo.owner,
-      repoInfo.repo,
-      prNumber,
-      token,
-      proxyFetch,
-    );
-
-    if (ctx.agent) return status;
-
-    console.log(
-      `${c.bold}PR #${prNumber}${c.reset} ${c.dim}${prUrl}${c.reset}\n`,
-    );
-    console.log(formatCIStatus(status));
-    return status;
-  },
-} as const;
+export async function getCISection(
+  ctx: Context,
+  prNumber: number,
+  headSha?: string,
+): Promise<{ status: CIStatus; flat: Record<string, string | number | boolean> }> {
+  const { token, repoInfo, proxyFetch } = ctx;
+  const status = await fetchCIStatus(
+    repoInfo.owner,
+    repoInfo.repo,
+    prNumber,
+    token,
+    proxyFetch,
+    headSha,
+  );
+  return { status, flat: flatten(status) };
+}

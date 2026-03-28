@@ -1,9 +1,16 @@
-import { ghFetch, type ProxyFetch } from "./fetch.ts";
+import { spawnSync } from "node:child_process";
+import { ghFetch, type ProxyFetch } from "./fetch.js";
 
 function spawnText(cmd: string[]): string | null {
-  const result = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
-  if (result.exitCode !== 0) return null;
-  return new TextDecoder().decode(result.stdout).trim();
+  const [command, ...args] = cmd;
+  if (!command) {
+    return null;
+  }
+  const result = spawnSync(command, args, { encoding: "utf-8" });
+  if (result.status !== 0) {
+    return null;
+  }
+  return result.stdout.trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -20,21 +27,25 @@ export interface RepoInfo {
 }
 
 export function getRepoInfo(): RepoInfo | null {
-  const envRepo = Bun.env.GH_REPO;
+  const envRepo = process.env.GH_REPO;
   if (envRepo) {
     const match = envRepo.match(/^([^/]+)\/([^/]+)$/);
-    if (match?.[1] && match[2]) return { owner: match[1], repo: match[2] };
+    if (match?.[1] && match[2]) {
+      return { owner: match[1], repo: match[2] };
+    }
   }
 
   const remoteUrl = spawnText(["git", "remote", "get-url", "origin"]);
-  if (!remoteUrl) return null;
+  if (!remoteUrl) {
+    return null;
+  }
 
   // SSH, HTTPS, and proxy URL formats
   const sshMatch = remoteUrl.match(/git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/);
   const httpsMatch = remoteUrl.match(/github\.com\/([^/]+)\/(.+?)(?:\.git)?$/);
   const proxyMatch = remoteUrl.match(/\/git\/([^/]+)\/([^/]+)$/);
 
-  const match = sshMatch || httpsMatch || proxyMatch;
+  const match = sshMatch ?? httpsMatch ?? proxyMatch;
   if (match?.[1] && match[2]) {
     return { owner: match[1], repo: match[2].replace(/\.git$/, "") };
   }
@@ -54,7 +65,7 @@ export interface PR {
   number: number;
   title: string;
   html_url: string;
-  head: { ref: string };
+  head: { ref: string; sha: string };
   state: string;
 }
 
@@ -70,9 +81,11 @@ export async function findPRForBranch(
     token,
     proxyFetch,
   );
-  if (!response.ok) throw new Error(`Failed to find PR: ${response.status}`);
+  if (!response.ok) {
+    throw new Error(`Failed to find PR: ${response.status}`);
+  }
   const prs = (await response.json()) as PR[];
-  return prs[0] || null;
+  return prs[0] ?? null;
 }
 
 export async function listOpenPRs(
@@ -86,6 +99,48 @@ export async function listOpenPRs(
     token,
     proxyFetch,
   );
-  if (!response.ok) throw new Error(`Failed to list PRs: ${response.status}`);
+  if (!response.ok) {
+    throw new Error(`Failed to list PRs: ${response.status}`);
+  }
   return (await response.json()) as PR[];
+}
+
+// ---------------------------------------------------------------------------
+// PR merge state
+// ---------------------------------------------------------------------------
+
+export interface PRMergeState {
+  state: "open" | "closed" | "merged";
+  mergeable: boolean | null;
+  mergeableState: string;
+}
+
+interface RawPRMergeData {
+  state: string;
+  merged: boolean;
+  mergeable: boolean | null;
+  mergeable_state?: string;
+}
+
+export async function fetchPRMergeState(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  token: string,
+  proxyFetch: ProxyFetch,
+): Promise<PRMergeState> {
+  const response = await ghFetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+    token,
+    proxyFetch,
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch PR merge state: ${response.status}`);
+  }
+  const pr = (await response.json()) as RawPRMergeData;
+  return {
+    state: pr.merged ? "merged" : (pr.state as "open" | "closed"),
+    mergeable: pr.mergeable,
+    mergeableState: pr.mergeable_state ?? "unknown",
+  };
 }
