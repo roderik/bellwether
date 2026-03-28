@@ -11,6 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 25
+
       - uses: oven-sh/setup-bun@v2
 
       - run: bun install
@@ -26,6 +30,10 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 25
 
       - uses: oven-sh/setup-bun@v2
 

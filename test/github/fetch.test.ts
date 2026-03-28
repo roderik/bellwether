@@ -10,10 +10,10 @@ beforeEach(() => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function mockProxyFetch(responses: Array<{ ok: boolean; status: number; data: any; headers?: Record<string, string> }>) {
+function mockProxyFetch(responses: { ok: boolean; status: number; data: any; headers?: Record<string, string> }[]) {
   let callIdx = 0;
   return vi.fn(async () => {
-    const resp = responses[callIdx++]!;
+    const resp = responses[callIdx++];
     return {
       ok: resp.ok,
       status: resp.status,

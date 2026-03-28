@@ -55,14 +55,10 @@ export async function resolvePR(
 
   const branch = getCurrentBranch();
   if (branch && branch !== "main" && branch !== "master") {
-    const pr = await findPRForBranch(
-      repoInfo.owner,
-      repoInfo.repo,
-      branch,
-      token,
-      proxyFetch,
-    );
-    if (pr) return { prNumber: pr.number, prUrl: pr.html_url };
+    const pr = await findPRForBranch(repoInfo.owner, repoInfo.repo, branch, token, proxyFetch);
+    if (pr) {
+      return { prNumber: pr.number, prUrl: pr.html_url };
+    }
   }
 
   const prs = await listOpenPRs(repoInfo.owner, repoInfo.repo, token, proxyFetch);
@@ -81,7 +77,9 @@ export async function resolvePR(
     })),
   });
 
-  if (clack.isCancel(selected)) process.exit(0);
+  if (clack.isCancel(selected)) {
+    process.exit(0);
+  }
 
   const pr = prs.find((p) => p.number === selected)!;
   return { prNumber: pr.number, prUrl: pr.html_url };

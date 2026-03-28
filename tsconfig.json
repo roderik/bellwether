@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     // Environment setup & latest features
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "ES2021"],
     "target": "ESNext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
@@ -28,5 +28,5 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "exclude": ["dist", "coverage", "node_modules"]
+  "include": ["src"]
 }

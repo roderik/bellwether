@@ -44,7 +44,7 @@ function parseHeaderMap(rawHeaders: string): HeaderMap {
   const map = new Map<string, string>();
   for (const line of lines) {
     const idx = line.indexOf(":");
-    if (idx === -1) continue;
+    if (idx === -1) {continue;}
     const key = line.slice(0, idx).trim().toLowerCase();
     const value = line.slice(idx + 1).trim();
     map.set(key, value);
@@ -63,7 +63,7 @@ function parseLastHeaderBlock(headerContent: string): string {
     .filter(Boolean);
   for (let i = blocks.length - 1; i >= 0; i -= 1) {
     const block = blocks[i];
-    if (block?.startsWith("HTTP/")) return block;
+    if (block?.startsWith("HTTP/")) {return block;}
   }
   return "";
 }
@@ -91,7 +91,7 @@ function createCurlFetch(): ProxyFetch {
       "--output",
       bodyFile,
       "--request",
-      options.method || "GET",
+      options.method ?? "GET",
       "--write-out",
       "%{http_code}",
     ];
@@ -140,7 +140,7 @@ function createCurlFetch(): ProxyFetch {
 // ---------------------------------------------------------------------------
 
 export function getProxyFetch(): ProxyFetch {
-  const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
+  const proxyUrl = process.env.HTTPS_PROXY ?? process.env.https_proxy;
   if (proxyUrl) {
     try {
       const { ProxyAgent, fetch: undiciFetch } = require("undici");
@@ -209,7 +209,7 @@ export async function fetchAllPages<T>(
     nextUrl = null;
     if (linkHeader) {
       const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-      if (nextMatch?.[1]) nextUrl = nextMatch[1];
+      if (nextMatch?.[1]) {nextUrl = nextMatch[1];}
     }
   }
 

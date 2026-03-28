@@ -43,7 +43,7 @@ describe("ciCommand.run", () => {
 
     await ciCommand.run(c);
     expect(c.ok).toHaveBeenCalledTimes(1);
-    const data = c.ok.mock.calls[0]![0];
+    const data = c.ok.mock.calls[0][0];
     expect(data.pending).toBe(1);
   });
 
@@ -53,7 +53,7 @@ describe("ciCommand.run", () => {
     mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 1 });
 
     await ciCommand.run(c);
-    const meta = c.ok.mock.calls[0]![1];
+    const meta = c.ok.mock.calls[0][1];
     expect(meta.cta.description).toContain("still running");
   });
 
@@ -63,7 +63,7 @@ describe("ciCommand.run", () => {
     mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 0, failing: 1, failures: [{ name: "test", conclusion: "failure", html_url: "u", log: "err" }] });
 
     await ciCommand.run(c);
-    const meta = c.ok.mock.calls[0]![1];
+    const meta = c.ok.mock.calls[0][1];
     expect(meta.cta.description).toContain("failing");
   });
 
@@ -73,7 +73,7 @@ describe("ciCommand.run", () => {
     mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 0, failing: 0 });
 
     await ciCommand.run(c);
-    const meta = c.ok.mock.calls[0]![1];
+    const meta = c.ok.mock.calls[0][1];
     expect(meta.cta).toBeUndefined();
   });
 
@@ -94,7 +94,7 @@ describe("ciCommand.run", () => {
     mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 0, failing: 1, failures: [{ name: "x", conclusion: "failure", html_url: "u", log: "e" }] });
 
     await ciCommand.run(c);
-    const data = c.ok.mock.calls[0]![0];
+    const data = c.ok.mock.calls[0][0];
     expect(data.allPassing).toBe(false);
   });
 
@@ -124,7 +124,7 @@ describe("ciCommand.run", () => {
     mockFetchCI.mockResolvedValue({ ...baseStatus, pending: 1 });
 
     await ciCommand.run(c);
-    const data = c.ok.mock.calls[0]![0];
+    const data = c.ok.mock.calls[0][0];
     expect(data.timedOut).toBe(true);
   });
 });

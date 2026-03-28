@@ -14,18 +14,9 @@ const cli = Cli.create("sheperd", {
       .string()
       .optional()
       .describe("GitHub personal access token (also reads GH_TOKEN, .env.local, gh CLI)"),
-    GH_TOKEN: z
-      .string()
-      .optional()
-      .describe("Alternative GitHub token env var"),
-    GH_REPO: z
-      .string()
-      .optional()
-      .describe("Override repository in owner/repo format"),
-    HTTPS_PROXY: z
-      .string()
-      .optional()
-      .describe("HTTPS proxy URL for corporate/cloud environments"),
+    GH_TOKEN: z.string().optional().describe("Alternative GitHub token env var"),
+    GH_REPO: z.string().optional().describe("Override repository in owner/repo format"),
+    HTTPS_PROXY: z.string().optional().describe("HTTPS proxy URL for corporate/cloud environments"),
   }),
   sync: {
     include: ["_root"],

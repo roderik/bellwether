@@ -58,25 +58,20 @@ function filterLog(raw: string): string {
   }
 
   // If we found a failed step, extract just that; otherwise use entire log
-  const stepLines =
-    failStart !== -1 && failEnd !== -1
-      ? lines.slice(failStart, failEnd)
-      : lines;
+  const stepLines = failStart !== -1 && failEnd !== -1 ? lines.slice(failStart, failEnd) : lines;
 
   const cleaned = stepLines
-    .map((l) => l.replace(ANSI_RE, ""))            // strip ANSI
-    .map((l) => l.replace(TIMESTAMP_RE, ""))        // strip timestamps
-    .filter((l) => !GROUP_MARKERS.test(l))          // strip ##[group] markers
-    .filter((l) => !NOISE_RE.test(l))               // strip debug/notice noise
-    .map((l) => l.replace(/^##\[error\]/, ""))      // strip ##[error] prefix, keep content
-    .map((l) => l.replace(/^##\[warning\]/, ""))    // strip ##[warning] prefix, keep content
-    .filter((l) => l.trim() !== "")                 // strip blank lines
+    .map((l) => l.replace(ANSI_RE, "")) // strip ANSI
+    .map((l) => l.replace(TIMESTAMP_RE, "")) // strip timestamps
+    .filter((l) => !GROUP_MARKERS.test(l)) // strip ##[group] markers
+    .filter((l) => !NOISE_RE.test(l)) // strip debug/notice noise
+    .map((l) => l.replace(/^##\[error\]/, "")) // strip ##[error] prefix, keep content
+    .map((l) => l.replace(/^##\[warning\]/, "")) // strip ##[warning] prefix, keep content
+    .filter((l) => l.trim() !== "") // strip blank lines
     .map((l) => (l.length > 200 ? l.slice(0, 200) + "…" : l)); // truncate long lines
 
   // Tail: keep last N lines (error summaries are at the end)
-  const tail = cleaned.length > MAX_LINES
-    ? cleaned.slice(-MAX_LINES)
-    : cleaned;
+  const tail = cleaned.length > MAX_LINES ? cleaned.slice(-MAX_LINES) : cleaned;
 
   return tail.join("\n");
 }
@@ -94,7 +89,9 @@ async function fetchJobLog(
       token,
       proxyFetch,
     );
-    if (!res.ok) return `[failed to fetch logs: ${res.status}]`;
+    if (!res.ok) {
+      return `[failed to fetch logs: ${res.status}]`;
+    }
     return filterLog(await res.text());
   } catch {
     return "[failed to fetch logs]";
@@ -121,7 +118,7 @@ export async function fetchCIStatus(
   if (!prResponse.ok) {
     throw new Error(`Failed to fetch PR: ${prResponse.status}`);
   }
-  const pr = (await prResponse.json()) as any;
+  const pr = await prResponse.json();
   const sha = pr.head.sha as string;
 
   // Fetch check runs for that SHA
@@ -133,13 +130,11 @@ export async function fetchCIStatus(
   if (!checksResponse.ok) {
     throw new Error(`Failed to fetch checks: ${checksResponse.status}`);
   }
-  const checksData = (await checksResponse.json()) as any;
+  const checksData = await checksResponse.json();
   const rawChecks = checksData.check_runs as any[];
 
   const isPassing = (c: any) =>
-    c.conclusion === "success" ||
-    c.conclusion === "skipped" ||
-    c.conclusion === "neutral";
+    c.conclusion === "success" || c.conclusion === "skipped" || c.conclusion === "neutral";
   const isFailing = (c: any) =>
     c.conclusion === "failure" ||
     c.conclusion === "timed_out" ||

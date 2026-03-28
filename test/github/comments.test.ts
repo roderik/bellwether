@@ -46,10 +46,10 @@ function makeReview(overrides: Record<string, any> = {}) {
   };
 }
 
-function mockProxyFetch(responses: Array<{ ok: boolean; status: number; data: any; headers?: Record<string, string> }>) {
+function mockProxyFetch(responses: { ok: boolean; status: number; data: any; headers?: Record<string, string> }[]) {
   let callIdx = 0;
   return vi.fn(async () => {
-    const resp = responses[callIdx++]!;
+    const resp = responses[callIdx++];
     return {
       ok: resp.ok,
       status: resp.status,
@@ -72,12 +72,12 @@ describe("processComments", () => {
       reviews: [],
     });
     expect(result).toHaveLength(1);
-    expect(result[0]!.type).toBe("review_comment");
-    expect(result[0]!.user).toBe("alice");
-    expect(result[0]!.path).toBe("src/foo.ts");
-    expect(result[0]!.line).toBe(10);
-    expect(result[0]!.isBot).toBe(false);
-    expect(result[0]!.isResolved).toBe(false);
+    expect(result[0].type).toBe("review_comment");
+    expect(result[0].user).toBe("alice");
+    expect(result[0].path).toBe("src/foo.ts");
+    expect(result[0].line).toBe(10);
+    expect(result[0].isBot).toBe(false);
+    expect(result[0].isResolved).toBe(false);
   });
 
   it("uses original_line when line is falsy", () => {
@@ -86,7 +86,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.line).toBe(42);
+    expect(result[0].line).toBe(42);
   });
 
   it("builds reply map and attaches replies to parent", () => {
@@ -103,10 +103,10 @@ describe("processComments", () => {
       reviews: [],
     });
     expect(result).toHaveLength(1);
-    expect(result[0]!.replies).toHaveLength(1);
-    expect(result[0]!.replies[0]!.user).toBe("dave");
-    expect(result[0]!.hasAnyReply).toBe(true);
-    expect(result[0]!.hasHumanReply).toBe(true);
+    expect(result[0].replies).toHaveLength(1);
+    expect(result[0].replies[0].user).toBe("dave");
+    expect(result[0].hasAnyReply).toBe(true);
+    expect(result[0].hasHumanReply).toBe(true);
   });
 
   it("detects bot replies", () => {
@@ -121,8 +121,8 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.hasAnyReply).toBe(true);
-    expect(result[0]!.hasHumanReply).toBe(false);
+    expect(result[0].hasAnyReply).toBe(true);
+    expect(result[0].hasHumanReply).toBe(false);
   });
 
   it("processes issue comments", () => {
@@ -132,9 +132,9 @@ describe("processComments", () => {
       reviews: [],
     });
     expect(result).toHaveLength(1);
-    expect(result[0]!.type).toBe("issue_comment");
-    expect(result[0]!.path).toBeNull();
-    expect(result[0]!.replies).toEqual([]);
+    expect(result[0].type).toBe("issue_comment");
+    expect(result[0].path).toBeNull();
+    expect(result[0].replies).toEqual([]);
   });
 
   it("processes human reviews with body", () => {
@@ -144,9 +144,9 @@ describe("processComments", () => {
       reviews: [makeReview()],
     });
     expect(result).toHaveLength(1);
-    expect(result[0]!.type).toBe("review");
-    expect(result[0]!.isResolved).toBe(true); // APPROVED
-    expect(result[0]!.state).toBe("APPROVED");
+    expect(result[0].type).toBe("review");
+    expect(result[0].isResolved).toBe(true); // APPROVED
+    expect(result[0].state).toBe("APPROVED");
   });
 
   it("marks DISMISSED reviews as resolved", () => {
@@ -155,7 +155,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [makeReview({ state: "DISMISSED" })],
     });
-    expect(result[0]!.isResolved).toBe(true);
+    expect(result[0].isResolved).toBe(true);
   });
 
   it("marks CHANGES_REQUESTED reviews as not resolved", () => {
@@ -164,7 +164,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [makeReview({ state: "CHANGES_REQUESTED" })],
     });
-    expect(result[0]!.isResolved).toBe(false);
+    expect(result[0].isResolved).toBe(false);
   });
 
   it("skips bot reviews", () => {
@@ -441,7 +441,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.body).toBe("beforeafter");
+    expect(result[0].body).toBe("beforeafter");
   });
 
   it("strips Additional Locations details blocks", () => {
@@ -450,9 +450,9 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.body).not.toContain("Additional Locations");
-    expect(result[0]!.body).toContain("issue");
-    expect(result[0]!.body).toContain("more");
+    expect(result[0].body).not.toContain("Additional Locations");
+    expect(result[0].body).toContain("issue");
+    expect(result[0].body).toContain("more");
   });
 
   it("strips cursor.com p blocks", () => {
@@ -461,7 +461,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.body).not.toContain("cursor.com");
+    expect(result[0].body).not.toContain("cursor.com");
   });
 
   it("collapses 3+ newlines to 2", () => {
@@ -470,7 +470,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.body).toBe("a\n\nb");
+    expect(result[0].body).toBe("a\n\nb");
   });
 
   it("returns empty string for null body", () => {
@@ -479,7 +479,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.body).toBe("");
+    expect(result[0].body).toBe("");
   });
 
   it("returns empty string for undefined body", () => {
@@ -488,7 +488,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.body).toBe("");
+    expect(result[0].body).toBe("");
   });
 
   // Bot detection
@@ -498,7 +498,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.isBot).toBe(true);
+    expect(result[0].isBot).toBe(true);
   });
 
   it("detects known bot logins", () => {
@@ -508,7 +508,7 @@ describe("processComments", () => {
         issueComments: [],
         reviews: [],
       });
-      expect(result[0]!.isBot).toBe(true);
+      expect(result[0].isBot).toBe(true);
     }
   });
 
@@ -518,7 +518,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.isBot).toBe(true);
+    expect(result[0].isBot).toBe(true);
   });
 
   it("treats undefined user as not bot", () => {
@@ -527,7 +527,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.isBot).toBe(false);
+    expect(result[0].isBot).toBe(false);
   });
 
   it("handles null diff_hunk", () => {
@@ -536,7 +536,7 @@ describe("processComments", () => {
       issueComments: [],
       reviews: [],
     });
-    expect(result[0]!.diffHunk).toBeNull();
+    expect(result[0].diffHunk).toBeNull();
   });
 });
 

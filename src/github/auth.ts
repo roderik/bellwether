@@ -5,9 +5,9 @@ import { getRepoRoot } from "./repo.js";
 
 function spawnText(cmd: string[]): string | null {
   const [command, ...args] = cmd;
-  if (!command) return null;
+  if (!command) {return null;}
   const result = spawnSync(command, args, { encoding: "utf-8" });
-  if (result.status !== 0) return null;
+  if (result.status !== 0) {return null;}
   return result.stdout.trim();
 }
 
@@ -19,8 +19,8 @@ function spawnText(cmd: string[]): string | null {
  * 4. `gh auth token` CLI
  */
 export async function getGitHubToken(): Promise<string | null> {
-  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
-  if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
+  if (process.env.GITHUB_TOKEN) {return process.env.GITHUB_TOKEN;}
+  if (process.env.GH_TOKEN) {return process.env.GH_TOKEN;}
 
   const root = getRepoRoot();
   if (root) {
@@ -29,12 +29,12 @@ export async function getGitHubToken(): Promise<string | null> {
       await access(envPath);
       const content = await readFile(envPath, "utf-8");
       const match = content.match(/^GITHUB_TOKEN=["']?([^"'\n]+)["']?/m);
-      if (match?.[1]) return match[1];
+      if (match?.[1]) {return match[1];}
     } catch {}
   }
 
   const token = spawnText(["gh", "auth", "token"]);
-  if (token) return token;
+  if (token) {return token;}
 
   return null;
 }

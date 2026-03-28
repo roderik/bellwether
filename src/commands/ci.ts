@@ -1,28 +1,40 @@
 import { z } from "incur";
 import { resolvePR, type Context } from "../context.js";
-import { fetchCIStatus } from "../github/index.js";
+import { fetchCIStatus, type CIStatus } from "../github/index.js";
 
-const failingCheckSchema = z.object({
-  name: z.string().describe("Check name"),
-  conclusion: z.string().describe("Result"),
-  html_url: z.string().describe("GitHub URL for full logs"),
-  log: z.string().describe("Filtered error output from the failed step"),
-});
+function flatten(
+  status: CIStatus,
+  extra?: Record<string, boolean>,
+): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {
+    sha: status.sha,
+    checks: `${status.total} total, ${status.passing} passing, ${status.failing} failing, ${status.pending} pending`,
+  };
+  if (status.passed.length > 0) {
+    out.passed = status.passed.join(", ");
+  }
+  if (status.in_progress.length > 0) {
+    out.in_progress = status.in_progress.join(", ");
+  }
+  for (const f of status.failures) {
+    const label =
+      f.conclusion === "failure" ? `FAIL ${f.name}` : `${f.conclusion.toUpperCase()} ${f.name}`;
+    out[label] = f.log;
+  }
+  if (extra) {
+    Object.assign(out, extra);
+  }
+  return out;
+}
 
 export const ciCommand = {
   description: "Show CI/check run status for a PR",
   hint: "With --watch, polls until all checks complete, fail, or timeout. Returns immediately on first poll without --watch.",
   args: z.object({
-    pr: z.coerce
-      .number()
-      .optional()
-      .describe("PR number (auto-detects from branch)"),
+    pr: z.coerce.number().optional().describe("PR number (auto-detects from branch)"),
   }),
   options: z.object({
-    watch: z
-      .boolean()
-      .default(false)
-      .describe("Poll until all checks complete"),
+    watch: z.boolean().default(false).describe("Poll until all checks complete"),
     interval: z.coerce.number().default(15).describe("Poll interval in seconds"),
     timeout: z.coerce.number().default(600).describe("Timeout in seconds"),
   }),
@@ -33,18 +45,14 @@ export const ciCommand = {
     { args: { pr: true }, options: { watch: true } },
     { args: { pr: true }, options: { watch: true, interval: true, timeout: true } },
   ],
-  output: z.object({
-    sha: z.string().describe("Head commit SHA"),
-    total: z.number().describe("Total number of checks"),
-    passing: z.number().describe("Checks that succeeded/skipped"),
-    failing: z.number().describe("Checks that failed/timed out"),
-    pending: z.number().describe("Checks still running or queued"),
-    passed: z.array(z.string()).describe("Names of passing checks"),
-    in_progress: z.array(z.string()).describe("Names of running checks"),
-    failures: z.array(failingCheckSchema).describe("Failing checks with annotations"),
-    allPassing: z.boolean().optional().describe("True when all checks passed"),
-    timedOut: z.boolean().optional().describe("True when watch timed out"),
-  }),
+  output: z
+    .object({
+      sha: z.string().describe("Head commit SHA"),
+      checks: z.string().describe("Summary: total, passing, failing, pending"),
+      passed: z.string().optional().describe("Names of passing checks"),
+      in_progress: z.string().optional().describe("Names of running checks"),
+    })
+    .catchall(z.union([z.string(), z.number(), z.boolean()])),
   examples: [
     { description: "Show CI status for current branch's PR" },
     { args: { pr: 123 }, description: "CI status for PR #123" },
@@ -75,11 +83,12 @@ export const ciCommand = {
           proxyFetch,
         );
 
-        const allPassing = status.failing === 0 && status.pending === 0;
-        if (allPassing) return c.ok({ ...status, allPassing: true });
+        if (status.failing === 0 && status.pending === 0) {
+          return c.ok(flatten(status, { allPassing: true }));
+        }
 
         if (status.failing > 0 && status.pending === 0) {
-          return c.ok({ ...status, allPassing: false }, {
+          return c.ok(flatten(status, { allPassing: false }), {
             cta: {
               description: "Failed checks detected:",
               commands: [
@@ -95,7 +104,7 @@ export const ciCommand = {
         }
 
         if ((Date.now() - start) / 1000 >= opts.timeout) {
-          return c.ok({ ...status, timedOut: true }, {
+          return c.ok(flatten(status, { timedOut: true }), {
             cta: {
               description: "Timed out, checks still running:",
               commands: [
@@ -114,40 +123,35 @@ export const ciCommand = {
       }
     }
 
-    const status = await fetchCIStatus(
-      repoInfo.owner,
-      repoInfo.repo,
-      prNumber,
-      token,
-      proxyFetch,
-    );
+    const status = await fetchCIStatus(repoInfo.owner, repoInfo.repo, prNumber, token, proxyFetch);
 
-    return c.ok(status, {
-      cta: status.pending > 0
-        ? {
-            description: "Checks still running:",
-            commands: [
-              {
-                command: "ci",
-                args: { pr: prNumber },
-                options: { watch: true },
-                description: "Watch until complete",
-              },
-            ],
-          }
-        : status.failing > 0
+    return c.ok(flatten(status), {
+      cta:
+        status.pending > 0
           ? {
-              description: "Checks failing:",
+              description: "Checks still running:",
               commands: [
                 {
-                  command: "reviews",
+                  command: "ci",
                   args: { pr: prNumber },
-                  options: { unresolved: true },
-                  description: "Check review comments",
+                  options: { watch: true },
+                  description: "Watch until complete",
                 },
               ],
             }
-          : undefined,
+          : status.failing > 0
+            ? {
+                description: "Checks failing:",
+                commands: [
+                  {
+                    command: "reviews",
+                    args: { pr: prNumber },
+                    options: { unresolved: true },
+                    description: "Check review comments",
+                  },
+                ],
+              }
+            : undefined,
     });
   },
 };

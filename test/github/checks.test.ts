@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { fetchCIStatus } from "../../src/github/checks.js";
 
-function mockProxyFetch(responses: Array<{ ok: boolean; status: number; data?: any; text?: string; headers?: Record<string, string> }>) {
+function mockProxyFetch(responses: { ok: boolean; status: number; data?: any; text?: string; headers?: Record<string, string> }[]) {
   let callIdx = 0;
   return vi.fn(async () => {
-    const resp = responses[callIdx++]!;
+    const resp = responses[callIdx++];
     const body = resp.text ?? JSON.stringify(resp.data);
     return {
       ok: resp.ok,
@@ -54,10 +54,10 @@ describe("fetchCIStatus", () => {
     expect(result.passed).toEqual(["build", "deploy", "audit"]);
     expect(result.in_progress).toEqual(["lint"]);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]!.name).toBe("test");
-    expect(result.failures[0]!.log).toContain("Cannot find name 'fetch'");
-    expect(result.failures[0]!.log).not.toContain("##[group]");
-    expect(result.failures[0]!.log).not.toContain("2024-01-01");
+    expect(result.failures[0].name).toBe("test");
+    expect(result.failures[0].log).toContain("Cannot find name 'fetch'");
+    expect(result.failures[0].log).not.toContain("##[group]");
+    expect(result.failures[0].log).not.toContain("2024-01-01");
   });
 
   it("handles timed_out and action_required as failing", async () => {
@@ -142,19 +142,19 @@ describe("fetchCIStatus", () => {
     ]);
 
     const result = await fetchCIStatus("o", "r", 1, "tok", pf);
-    expect(result.failures[0]!.log).toContain("failed to fetch logs");
+    expect(result.failures[0].log).toContain("failed to fetch logs");
   });
 
   it("handles log fetch exception gracefully", async () => {
     let callIdx = 0;
     const pf = vi.fn(async () => {
       callIdx++;
-      if (callIdx === 1) return { ok: true, status: 200, headers: { get: () => null }, text: async () => "", json: async () => ({ head: { sha: "abc" } }) };
-      if (callIdx === 2) return { ok: true, status: 200, headers: { get: () => null }, text: async () => "", json: async () => ({ check_runs: [{ id: 1, name: "test", status: "completed", conclusion: "failure", html_url: "https://github.com/o/r/actions/runs/1/job/1" }] }) };
+      if (callIdx === 1) {return { ok: true, status: 200, headers: { get: () => null }, text: async () => "", json: async () => ({ head: { sha: "abc" } }) };}
+      if (callIdx === 2) {return { ok: true, status: 200, headers: { get: () => null }, text: async () => "", json: async () => ({ check_runs: [{ id: 1, name: "test", status: "completed", conclusion: "failure", html_url: "https://github.com/o/r/actions/runs/1/job/1" }] }) };}
       throw new Error("network error");
     });
     const result = await fetchCIStatus("o", "r", 1, "tok", pf);
-    expect(result.failures[0]!.log).toBe("[failed to fetch logs]");
+    expect(result.failures[0].log).toBe("[failed to fetch logs]");
   });
 
   it("handles unparseable job URL", async () => {
@@ -169,7 +169,7 @@ describe("fetchCIStatus", () => {
       },
     ]);
     const result = await fetchCIStatus("o", "r", 1, "tok", pf);
-    expect(result.failures[0]!.log).toContain("could not parse job ID");
+    expect(result.failures[0].log).toContain("could not parse job ID");
   });
 
   it("filters log with failed step markers", async () => {
@@ -197,9 +197,9 @@ describe("fetchCIStatus", () => {
     ]);
 
     const result = await fetchCIStatus("o", "r", 1, "tok", pf);
-    expect(result.failures[0]!.log).toContain("Expected 1 to be 2");
-    expect(result.failures[0]!.log).not.toContain("##[group]");
-    expect(result.failures[0]!.log).not.toContain("installing deps");
+    expect(result.failures[0].log).toContain("Expected 1 to be 2");
+    expect(result.failures[0].log).not.toContain("##[group]");
+    expect(result.failures[0].log).not.toContain("installing deps");
   });
 
   it("filters log without failed step markers (uses full log)", async () => {
@@ -224,8 +224,8 @@ describe("fetchCIStatus", () => {
     ]);
 
     const result = await fetchCIStatus("o", "r", 1, "tok", pf);
-    expect(result.failures[0]!.log).toContain("actual error here");
-    expect(result.failures[0]!.log).not.toContain("debug line");
+    expect(result.failures[0].log).toContain("actual error here");
+    expect(result.failures[0].log).not.toContain("debug line");
   });
 
   it("handles empty check runs", async () => {

@@ -1,12 +1,12 @@
 import { z } from "incur";
 import { resolvePR, type Context } from "../context.js";
 import {
-  type ProxyFetch,
   fetchPRComments,
   processComments,
   filterComments,
   replyToComment,
   resolveThread,
+  type ProxyFetch,
 } from "../github/index.js";
 
 const replySchema = z.object({
@@ -41,52 +41,19 @@ export const reviewsCommand = {
   description: "List, filter, reply to, and watch PR review comments",
   hint: "Comment IDs shown in output can be used with --detail and --reply. Bot meta-comments (Vercel deploy status, CodeRabbit summaries, etc.) are automatically filtered out.",
   args: z.object({
-    pr: z.coerce
-      .number()
-      .optional()
-      .describe("PR number (auto-detects from branch)"),
+    pr: z.coerce.number().optional().describe("PR number (auto-detects from branch)"),
   }),
   options: z.object({
-    unresolved: z
-      .boolean()
-      .default(false)
-      .describe("Show only unresolved/pending comments"),
-    unanswered: z
-      .boolean()
-      .default(false)
-      .describe("Show only comments without any replies"),
-    botsOnly: z
-      .boolean()
-      .default(false)
-      .describe("Only show comments from bots"),
-    humansOnly: z
-      .boolean()
-      .default(false)
-      .describe("Only show comments from humans"),
-    reply: z
-      .string()
-      .optional()
-      .describe("Reply to a comment: <id>:<message>"),
-    resolve: z
-      .boolean()
-      .default(false)
-      .describe("Resolve the thread after replying"),
-    detail: z.coerce
-      .number()
-      .optional()
-      .describe("Show full detail for a specific comment ID"),
-    watch: z
-      .boolean()
-      .default(false)
-      .describe("Poll for new comments (exits on detection)"),
-    interval: z.coerce
-      .number()
-      .default(30)
-      .describe("Poll interval in seconds (watch mode)"),
-    timeout: z.coerce
-      .number()
-      .default(600)
-      .describe("Inactivity timeout in seconds (watch mode)"),
+    unresolved: z.boolean().default(false).describe("Show only unresolved/pending comments"),
+    unanswered: z.boolean().default(false).describe("Show only comments without any replies"),
+    botsOnly: z.boolean().default(false).describe("Only show comments from bots"),
+    humansOnly: z.boolean().default(false).describe("Only show comments from humans"),
+    reply: z.string().optional().describe("Reply to a comment: <id>:<message>"),
+    resolve: z.boolean().default(false).describe("Resolve the thread after replying"),
+    detail: z.coerce.number().optional().describe("Show full detail for a specific comment ID"),
+    watch: z.boolean().default(false).describe("Poll for new comments (exits on detection)"),
+    interval: z.coerce.number().default(30).describe("Poll interval in seconds (watch mode)"),
+    timeout: z.coerce.number().default(600).describe("Inactivity timeout in seconds (watch mode)"),
   }),
   alias: {
     unresolved: "u",
@@ -373,7 +340,9 @@ async function watchForComments(
   const initialData = await fetchPRComments(owner, repo, prNumber, token, proxyFetch);
   const initialProcessed = processComments(initialData);
   const initialFiltered = filterComments(initialProcessed, options);
-  for (const comment of initialFiltered) seenIds.add(comment.id);
+  for (const comment of initialFiltered) {
+    seenIds.add(comment.id);
+  }
 
   while (true) {
     await new Promise<void>((r) => setTimeout(r, options.watchInterval * 1000));
@@ -384,7 +353,9 @@ async function watchForComments(
     const newComments = filtered.filter((cm) => !seenIds.has(cm.id));
 
     if (newComments.length > 0) {
-      for (const cm of newComments) seenIds.add(cm.id);
+      for (const cm of newComments) {
+        seenIds.add(cm.id);
+      }
 
       // Grace period for bot batches
       await new Promise<void>((r) => setTimeout(r, 5_000));

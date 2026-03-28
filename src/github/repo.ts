@@ -3,9 +3,13 @@ import { ghFetch, type ProxyFetch } from "./fetch.js";
 
 function spawnText(cmd: string[]): string | null {
   const [command, ...args] = cmd;
-  if (!command) return null;
+  if (!command) {
+    return null;
+  }
   const result = spawnSync(command, args, { encoding: "utf-8" });
-  if (result.status !== 0) return null;
+  if (result.status !== 0) {
+    return null;
+  }
   return result.stdout.trim();
 }
 
@@ -26,18 +30,22 @@ export function getRepoInfo(): RepoInfo | null {
   const envRepo = process.env.GH_REPO;
   if (envRepo) {
     const match = envRepo.match(/^([^/]+)\/([^/]+)$/);
-    if (match?.[1] && match[2]) return { owner: match[1], repo: match[2] };
+    if (match?.[1] && match[2]) {
+      return { owner: match[1], repo: match[2] };
+    }
   }
 
   const remoteUrl = spawnText(["git", "remote", "get-url", "origin"]);
-  if (!remoteUrl) return null;
+  if (!remoteUrl) {
+    return null;
+  }
 
   // SSH, HTTPS, and proxy URL formats
   const sshMatch = remoteUrl.match(/git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/);
   const httpsMatch = remoteUrl.match(/github\.com\/([^/]+)\/(.+?)(?:\.git)?$/);
   const proxyMatch = remoteUrl.match(/\/git\/([^/]+)\/([^/]+)$/);
 
-  const match = sshMatch || httpsMatch || proxyMatch;
+  const match = sshMatch ?? httpsMatch ?? proxyMatch;
   if (match?.[1] && match[2]) {
     return { owner: match[1], repo: match[2].replace(/\.git$/, "") };
   }
@@ -73,9 +81,11 @@ export async function findPRForBranch(
     token,
     proxyFetch,
   );
-  if (!response.ok) throw new Error(`Failed to find PR: ${response.status}`);
+  if (!response.ok) {
+    throw new Error(`Failed to find PR: ${response.status}`);
+  }
   const prs = (await response.json()) as PR[];
-  return prs[0] || null;
+  return prs[0] ?? null;
 }
 
 export async function listOpenPRs(
@@ -89,6 +99,8 @@ export async function listOpenPRs(
     token,
     proxyFetch,
   );
-  if (!response.ok) throw new Error(`Failed to list PRs: ${response.status}`);
+  if (!response.ok) {
+    throw new Error(`Failed to list PRs: ${response.status}`);
+  }
   return (await response.json()) as PR[];
 }

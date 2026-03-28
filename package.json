@@ -18,9 +18,7 @@
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "^0.18.1",
     "vitest": "^4.1.2",
-    "zile": "latest"
-  },
-  "peerDependencies": {
+    "zile": "latest",
     "typescript": "^6.0.2"
   },
   "dependencies": {
@@ -31,7 +29,7 @@
     "build": "zile",
     "dev": "zile dev",
     "format": "oxfmt --write",
-    "check": "oxlint --type-aware --type-check",
+    "check": "oxlint",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },

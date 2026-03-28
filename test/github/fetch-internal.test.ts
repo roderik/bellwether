@@ -72,7 +72,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     expect(await result.json()).toEqual({ result: true });
 
     // Verify curl was called with correct args
-    const curlArgs = mockSpawnSync.mock.calls[0]![1] as string[];
+    const curlArgs = mockSpawnSync.mock.calls[0][1] as string[];
     expect(curlArgs).toContain("POST");
     expect(curlArgs).toContain("--data");
     expect(curlArgs).toContain('{"key":"val"}');
@@ -165,7 +165,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
       expect.anything(),
     );
     // No --data flag when no body
-    const curlArgs = mockSpawnSync.mock.calls[0]![1] as string[];
+    const curlArgs = mockSpawnSync.mock.calls[0][1] as string[];
     expect(curlArgs).not.toContain("--data");
   });
 
