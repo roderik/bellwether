@@ -1,0 +1,23 @@
+.github/workflows/publish.yml
+  e009581148d72631 40-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "aaa02d2e3ceacc06f53e295fc061505e4666e3b6",
+  "prompts": {
+    "e009581148d72631": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f51e534-2a01-488e-a0b8-9ae6cf077596",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 7,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    }
+  }
+}
