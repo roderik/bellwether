@@ -1,35 +1,49 @@
-// Standalone hook handler — bypasses incur for speed.
-// Reads Claude/Codex PostToolUse JSON from stdin.
-// If the command is a PR-related action, outputs additionalContext
-// telling the LLM to start monitoring with bellwether.
+import { z } from "incur";
 
 const PR_PATTERN = /\bgit\s+push\b|\bgh\s+pr\s+(create|ready)\b/;
 
-export async function run(): Promise<void> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(chunk as Buffer);
-  }
-
-  let command = "";
-  try {
-    const input = JSON.parse(Buffer.concat(chunks).toString()) as {
-      tool_input?: { command?: string };
-      hook_event_name?: string;
-    };
-    command = input.tool_input?.command ?? "";
-
-    if (PR_PATTERN.test(command)) {
-      const output = {
-        hookSpecificOutput: {
-          hookEventName: input.hook_event_name ?? "PostToolUse",
-          additionalContext:
-            "PR pushed. Run `npx -y bellwether@latest check --watch` to monitor CI and reviews until merge-ready.",
-        },
-      };
-      process.stdout.write(JSON.stringify(output));
+export const hookCheckCommand = {
+  description:
+    "PostToolUse hook handler — reads hook event from stdin, outputs context if PR-related",
+  output: z.object({
+    hookSpecificOutput: z
+      .object({
+        hookEventName: z.string(),
+        additionalContext: z.string(),
+      })
+      .optional(),
+  }),
+  async run(c: {
+    ok: (data: {
+      hookSpecificOutput?: { hookEventName: string; additionalContext: string };
+    }) => unknown;
+  }) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) {
+      chunks.push(chunk as Buffer);
     }
-  } catch {
-    // Malformed input — exit silently
-  }
-}
+
+    let command = "";
+    try {
+      const input = JSON.parse(Buffer.concat(chunks).toString()) as {
+        tool_input?: { command?: string };
+        hook_event_name?: string;
+      };
+      command = input.tool_input?.command ?? "";
+
+      if (PR_PATTERN.test(command)) {
+        return c.ok({
+          hookSpecificOutput: {
+            hookEventName: input.hook_event_name ?? "PostToolUse",
+            additionalContext:
+              "PR pushed. Run `npx -y bellwether@latest check --watch` to monitor CI and reviews until merge-ready.",
+          },
+        });
+      }
+    } catch {
+      // Malformed input — return empty
+    }
+
+    return c.ok({});
+  },
+};
