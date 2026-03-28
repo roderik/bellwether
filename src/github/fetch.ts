@@ -114,8 +114,20 @@ function createCurlFetch(): ProxyFetch {
         encoding: "utf-8",
         timeout: 65_000,
       });
-      const statusCodeRaw = result.stdout.trim();
+      if (result.error) {
+        throw new Error(`curl failed to start: ${result.error.message}`);
+      }
+      if (result.status !== 0) {
+        const stderr = String(result.stderr).trim();
+        throw new Error(
+          `curl exited with status ${String(result.status)}${stderr ? `: ${stderr}` : ""}`,
+        );
+      }
+      const statusCodeRaw = String(result.stdout).trim();
       const status = Number.parseInt(statusCodeRaw, 10);
+      if (!statusCodeRaw || Number.isNaN(status)) {
+        throw new Error("curl did not return a valid HTTP status code");
+      }
       const body = await readFile(bodyFile, "utf-8");
       const headersRaw = await readFile(headersFile, "utf-8");
       const lastHeaderBlock = parseLastHeaderBlock(headersRaw);

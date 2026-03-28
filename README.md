@@ -2,7 +2,7 @@
 
 Drive GitHub PRs to merge-ready: watch CI, fix failures, resolve review comments. Self-contained watch loop that keeps going until `pr.ready=true`.
 
-Built with [incur](https://github.com/wevm/incur).
+Built with [incur](https://github.com/wevm/incur). Inspired by [RTK](https://github.com/rtk-ai/rtk) (token-efficient CLI output filtering) and [agent-reviews](https://github.com/pbakaus/agent-reviews) (automated PR review resolution).
 
 ## Install
 

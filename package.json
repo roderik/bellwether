@@ -27,8 +27,7 @@
     "skill"
   ],
   "bin": {
-    "bellwether": "./dist/bin.js",
-    "bellwether.src": "./src/bin.ts"
+    "bellwether": "./dist/bin.js"
   },
   "files": [
     "dist",
