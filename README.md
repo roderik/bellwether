@@ -6,40 +6,8 @@ Built with [incur](https://github.com/wevm/incur).
 
 ## Install
 
-### Claude Code plugin
-
 ```bash
-claude plugin install bellwether
-```
-
-Skills are namespaced as `/bellwether:bellwether`.
-
-### npx skills
-
-```bash
-npx skills add roderik/bellwether
-```
-
-Installs the skill into `.claude/skills/bellwether/`.
-
-### incur skills
-
-```bash
-npx -y bellwether@latest skills add
-```
-
-Auto-generates skill files from the CLI command definitions.
-
-### CLI only (no skill)
-
-```bash
-npm install -g bellwether
-```
-
-Or run without installing:
-
-```bash
-npx -y bellwether@latest check
+npx -y bellwether@latest skills add 
 ```
 
 ## Usage
