@@ -238,4 +238,60 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     expect(result.headers.get("real-header")).toBe("value");
     expect(result.headers.get("no-colon-line")).toBeNull();
   });
+
+  it("throws when curl fails to start", async () => {
+    process.env.HTTPS_PROXY = "http://proxy:8080";
+    const pf = getProxyFetch();
+
+    mockSpawnSync.mockReturnValue({
+      stdout: "",
+      status: null,
+      stderr: "",
+      pid: 0,
+      output: [],
+      signal: null,
+      error: new Error("ENOENT"),
+    } as any);
+    mockRm.mockResolvedValue(undefined);
+
+    await expect(pf("https://api.github.com/test")).rejects.toThrow("curl failed to start: ENOENT");
+  });
+
+  it("throws when curl exits with non-zero status", async () => {
+    process.env.HTTPS_PROXY = "http://proxy:8080";
+    const pf = getProxyFetch();
+
+    mockSpawnSync.mockReturnValue({
+      stdout: "",
+      status: 7,
+      stderr: "Connection refused",
+      pid: 1,
+      output: [],
+      signal: null,
+    } as any);
+    mockRm.mockResolvedValue(undefined);
+
+    await expect(pf("https://api.github.com/test")).rejects.toThrow(
+      "curl exited with status 7: Connection refused",
+    );
+  });
+
+  it("throws when curl returns invalid status code", async () => {
+    process.env.HTTPS_PROXY = "http://proxy:8080";
+    const pf = getProxyFetch();
+
+    mockSpawnSync.mockReturnValue({
+      stdout: "",
+      status: 0,
+      stderr: "",
+      pid: 1,
+      output: [],
+      signal: null,
+    } as any);
+    mockRm.mockResolvedValue(undefined);
+
+    await expect(pf("https://api.github.com/test")).rejects.toThrow(
+      "curl did not return a valid HTTP status code",
+    );
+  });
 });
