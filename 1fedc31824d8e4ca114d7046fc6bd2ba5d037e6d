@@ -1,0 +1,23 @@
+src/cli.ts
+  9d04e801f2e672b7 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "1fedc31824d8e4ca114d7046fc6bd2ba5d037e6d",
+  "prompts": {
+    "9d04e801f2e672b7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a53315d1-41d0-42b1-961c-e5ee6a845133",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
