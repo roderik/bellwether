@@ -1,0 +1,38 @@
+README.md
+  224060645116ef96 3,5-40,46-86,89,92,94-97,99-100,102-103,105-125
+.github/workflows/publish.yml
+  224060645116ef96 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.20",
+  "base_commit_sha": "ecf796b5300e8ffe77856a91a8151629dc13d41d",
+  "prompts": {
+    "224060645116ef96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b3aeb25-b333-4513-8ea0-145ad825602a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 115,
+      "total_deletions": 5,
+      "accepted_lines": 115,
+      "overriden_lines": 0
+    },
+    "e009581148d72631": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f51e534-2a01-488e-a0b8-9ae6cf077596",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 103,
+      "total_deletions": 67,
+      "accepted_lines": 102,
+      "overriden_lines": 0
+    }
+  }
+}
