@@ -12,11 +12,13 @@ export { getGitHubToken } from "./auth.js";
 export {
   type RepoInfo,
   type PR,
+  type PRMergeState,
   getRepoRoot,
   getRepoInfo,
   getCurrentBranch,
   findPRForBranch,
   listOpenPRs,
+  fetchPRMergeState,
 } from "./repo.js";
 
 export {
@@ -30,8 +32,4 @@ export {
   resolveThread,
 } from "./comments.js";
 
-export {
-  type FailingCheck,
-  type CIStatus,
-  fetchCIStatus,
-} from "./checks.js";
+export { type FailingCheck, type CIStatus, fetchCIStatus } from "./checks.js";

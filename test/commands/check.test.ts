@@ -4,6 +4,10 @@ vi.mock("../../src/context.js", () => ({
   resolvePR: vi.fn(),
 }));
 
+vi.mock("../../src/github/index.js", () => ({
+  fetchPRMergeState: vi.fn(),
+}));
+
 vi.mock("../../src/commands/ci.js", () => ({
   getCISection: vi.fn(),
 }));
@@ -17,6 +21,7 @@ vi.mock("../../src/commands/reviews.js", () => ({
 }));
 
 import { resolvePR } from "../../src/context.js";
+import { fetchPRMergeState } from "../../src/github/index.js";
 import { getCISection } from "../../src/commands/ci.js";
 import {
   getReviewsList,
@@ -27,6 +32,7 @@ import {
 import { checkCommand } from "../../src/commands/check.js";
 
 const mockResolvePR = vi.mocked(resolvePR);
+const mockFetchPRMergeState = vi.mocked(fetchPRMergeState);
 const mockGetCI = vi.mocked(getCISection);
 const mockGetReviews = vi.mocked(getReviewsList);
 const mockGetDetail = vi.mocked(getReviewDetail);
@@ -77,10 +83,23 @@ const ciResult = {
 const reviewsResult = { comments: [], total: 0 };
 const reviewsFlat = { total: "0 unresolved, 0 unanswered" };
 
+const mergeStateClean = {
+  state: "open" as const,
+  mergeable: true,
+  mergeableState: "clean",
+};
+
+const mergeStateDirty = {
+  state: "open" as const,
+  mergeable: false,
+  mergeableState: "dirty",
+};
+
 describe("checkCommand.run", () => {
   it("returns both ci and reviews sections", async () => {
     const c = makeCtx();
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
     mockGetCI.mockResolvedValue(ciResult as any);
     mockGetReviews.mockResolvedValue(reviewsResult);
     mockFormatReviews.mockReturnValue(reviewsFlat);
@@ -96,6 +115,7 @@ describe("checkCommand.run", () => {
   it("returns CTA for pending checks", async () => {
     const c = makeCtx();
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
     mockGetCI.mockResolvedValue(ciResult as any);
     mockGetReviews.mockResolvedValue(reviewsResult);
     mockFormatReviews.mockReturnValue(reviewsFlat);
@@ -109,6 +129,7 @@ describe("checkCommand.run", () => {
   it("returns CTA for failing checks", async () => {
     const c = makeCtx();
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
     mockGetCI.mockResolvedValue({
       status: {
         ...ciResult.status,
@@ -129,6 +150,7 @@ describe("checkCommand.run", () => {
   it("no CTA when all passing", async () => {
     const c = makeCtx();
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
     mockGetCI.mockResolvedValue({
       status: { ...ciResult.status, pending: 0, failing: 0 },
       flat: ciResult.flat,
@@ -182,6 +204,7 @@ describe("checkCommand.run", () => {
   it("watch returns immediately when all passing", async () => {
     const c = makeCtx({ watch: true });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
     mockGetCI.mockResolvedValue({
       status: { ...ciResult.status, pending: 0, failing: 0 },
       flat: ciResult.flat,
@@ -196,6 +219,7 @@ describe("checkCommand.run", () => {
   it("watch returns failing with CTA when all checks done", async () => {
     const c = makeCtx({ watch: true });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
     mockGetCI.mockResolvedValue({
       status: {
         ...ciResult.status,
@@ -219,6 +243,7 @@ describe("checkCommand.run", () => {
     vi.useFakeTimers();
     const c = makeCtx({ watch: true, interval: 1 });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
     mockGetCI.mockResolvedValueOnce(ciResult as any).mockResolvedValueOnce({
       status: { ...ciResult.status, pending: 0, failing: 0 },
       flat: ciResult.flat,
@@ -237,6 +262,7 @@ describe("checkCommand.run", () => {
   it("watch times out", async () => {
     const c = makeCtx({ watch: true, timeout: 0 });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
     mockGetCI.mockResolvedValue(ciResult as any);
     mockGetReviews.mockResolvedValue(reviewsResult);
     mockFormatReviews.mockReturnValue(reviewsFlat);
@@ -246,5 +272,103 @@ describe("checkCommand.run", () => {
     expect(data.ci.timedOut).toBe(true);
     const meta = c.ok.mock.calls[0][1] as any;
     expect(meta.cta.description).toContain("Timed out");
+  });
+
+  // PR merge state
+  it("includes pr section with ready=true when all conditions met", async () => {
+    const c = makeCtx();
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
+    mockGetCI.mockResolvedValue({
+      status: { ...ciResult.status, pending: 0, failing: 0 },
+      flat: ciResult.flat,
+    } as any);
+    mockGetReviews.mockResolvedValue(reviewsResult);
+    mockFormatReviews.mockReturnValue(reviewsFlat);
+
+    await checkCommand.run(c);
+    const data = c.ok.mock.calls[0][0] as any;
+    expect(data.pr).toEqual({
+      state: "open",
+      mergeable: "clean",
+      ready: true,
+    });
+  });
+
+  it("includes pr section with ready=false when mergeableState is dirty", async () => {
+    const c = makeCtx();
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateDirty);
+    mockGetCI.mockResolvedValue({
+      status: { ...ciResult.status, pending: 0, failing: 0 },
+      flat: ciResult.flat,
+    } as any);
+    mockGetReviews.mockResolvedValue(reviewsResult);
+    mockFormatReviews.mockReturnValue(reviewsFlat);
+
+    await checkCommand.run(c);
+    const data = c.ok.mock.calls[0][0] as any;
+    expect(data.pr.state).toBe("open");
+    expect(data.pr.mergeable).toBe("dirty");
+    expect(data.pr.ready).toBe(false);
+  });
+
+  it("includes pr section with ready=false when CI failing", async () => {
+    const c = makeCtx();
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
+    mockGetCI.mockResolvedValue({
+      status: {
+        ...ciResult.status,
+        pending: 0,
+        failing: 1,
+        failures: [{ name: "x", conclusion: "failure", html_url: "u", log: "e" }],
+      },
+      flat: { ...ciResult.flat, "FAIL x": "e" },
+    } as any);
+    mockGetReviews.mockResolvedValue(reviewsResult);
+    mockFormatReviews.mockReturnValue(reviewsFlat);
+
+    await checkCommand.run(c);
+    const data = c.ok.mock.calls[0][0] as any;
+    expect(data.pr.ready).toBe(false);
+  });
+
+  it("includes pr section with ready=false when unresolved reviews exist", async () => {
+    const c = makeCtx();
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
+    mockGetCI.mockResolvedValue({
+      status: { ...ciResult.status, pending: 0, failing: 0 },
+      flat: ciResult.flat,
+    } as any);
+    mockGetReviews.mockResolvedValue({
+      comments: [{ id: 1, isResolved: false, hasHumanReply: false, hasAnyReply: false } as any],
+      total: 1,
+    });
+    mockFormatReviews.mockReturnValue({ total: "1 unresolved, 1 unanswered" });
+
+    await checkCommand.run(c);
+    const data = c.ok.mock.calls[0][0] as any;
+    expect(data.pr.ready).toBe(false);
+  });
+
+  it("watch includes pr section", async () => {
+    const c = makeCtx({ watch: true });
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
+    mockGetCI.mockResolvedValue({
+      status: { ...ciResult.status, pending: 0, failing: 0 },
+      flat: ciResult.flat,
+    } as any);
+    mockGetReviews.mockResolvedValue(reviewsResult);
+    mockFormatReviews.mockReturnValue(reviewsFlat);
+
+    const result = (await checkCommand.run(c)) as any;
+    expect(result.pr).toEqual({
+      state: "open",
+      mergeable: "clean",
+      ready: true,
+    });
   });
 });

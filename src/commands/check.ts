@@ -1,5 +1,6 @@
 import { z } from "incur";
 import { resolvePR, type Context } from "../context.js";
+import { fetchPRMergeState, type PRMergeState, type CIStatus } from "../github/index.js";
 import { getCISection } from "./ci.js";
 import {
   getReviewsList,
@@ -8,6 +9,23 @@ import {
   formatReviewsSection,
   commentSchema,
 } from "./reviews.js";
+
+function buildPRSection(
+  mergeState: PRMergeState,
+  ciStatus: CIStatus,
+  unresolvedCount: number,
+): { state: string; mergeable: string; ready: boolean } {
+  return {
+    state: mergeState.state,
+    mergeable: mergeState.mergeableState,
+    ready:
+      mergeState.state === "open" &&
+      mergeState.mergeableState === "clean" &&
+      ciStatus.failing === 0 &&
+      ciStatus.pending === 0 &&
+      unresolvedCount === 0,
+  };
+}
 
 interface CheckCommandContext {
   var: { ctx: Context };
@@ -65,6 +83,19 @@ export const checkCommand = {
     { options: { reply: true, resolve: true } },
   ],
   output: z.object({
+    pr: z
+      .object({
+        state: z.string().describe("open | closed | merged"),
+        mergeable: z
+          .string()
+          .describe("Merge state: clean, dirty, blocked, behind, unstable, unknown, has_hooks"),
+        ready: z
+          .boolean()
+          .describe(
+            "true when state=open, mergeableState=clean, all CI passing, zero unresolved reviews",
+          ),
+      })
+      .optional(),
     ci: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
     reviews: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
     comment: commentSchema.optional(),
@@ -115,15 +146,27 @@ export const checkCommand = {
     if (opts.watch) {
       const start = Date.now();
       while (true) {
-        const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
+        const [mergeState, { status, flat: ciFlat }, reviewData] = await Promise.all([
+          fetchPRMergeState(
+            ctx.repoInfo.owner,
+            ctx.repoInfo.repo,
+            prNumber,
+            ctx.token,
+            ctx.proxyFetch,
+          ),
           getCISection(ctx, prNumber, headSha),
           getReviewsList(ctx, prNumber, filterOpts),
         ]);
 
         const reviewsFlat = formatReviewsSection(reviewData.comments);
+        const unresolvedCount = reviewData.comments.filter(
+          (cm) => !(cm.isResolved || cm.hasHumanReply),
+        ).length;
+        const prSection = buildPRSection(mergeState, status, unresolvedCount);
 
         if (status.failing === 0 && status.pending === 0) {
           return c.ok({
+            pr: prSection,
             ci: { ...ciFlat, allPassing: true },
             reviews: reviewsFlat,
           });
@@ -132,6 +175,7 @@ export const checkCommand = {
         if (status.failing > 0 && status.pending === 0) {
           return c.ok(
             {
+              pr: prSection,
               ci: { ...ciFlat, allPassing: false },
               reviews: reviewsFlat,
             },
@@ -149,6 +193,7 @@ export const checkCommand = {
         if ((Date.now() - start) / 1000 >= opts.timeout) {
           return c.ok(
             {
+              pr: prSection,
               ci: { ...ciFlat, timedOut: true },
               reviews: reviewsFlat,
             },
@@ -170,16 +215,21 @@ export const checkCommand = {
       }
     }
 
-    // Default: fetch both in parallel
-    const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
+    // Default: fetch all in parallel
+    const [mergeState, { status, flat: ciFlat }, reviewData] = await Promise.all([
+      fetchPRMergeState(ctx.repoInfo.owner, ctx.repoInfo.repo, prNumber, ctx.token, ctx.proxyFetch),
       getCISection(ctx, prNumber, headSha),
       getReviewsList(ctx, prNumber, filterOpts),
     ]);
 
     const reviewsFlat = formatReviewsSection(reviewData.comments);
+    const unresolvedCount = reviewData.comments.filter(
+      (cm) => !(cm.isResolved || cm.hasHumanReply),
+    ).length;
+    const prSection = buildPRSection(mergeState, status, unresolvedCount);
 
     return c.ok(
-      { ci: ciFlat, reviews: reviewsFlat },
+      { pr: prSection, ci: ciFlat, reviews: reviewsFlat },
       {
         cta:
           status.pending > 0

@@ -104,3 +104,43 @@ export async function listOpenPRs(
   }
   return (await response.json()) as PR[];
 }
+
+// ---------------------------------------------------------------------------
+// PR merge state
+// ---------------------------------------------------------------------------
+
+export interface PRMergeState {
+  state: "open" | "closed" | "merged";
+  mergeable: boolean | null;
+  mergeableState: string;
+}
+
+interface RawPRMergeData {
+  state: string;
+  merged: boolean;
+  mergeable: boolean | null;
+  mergeable_state?: string;
+}
+
+export async function fetchPRMergeState(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  token: string,
+  proxyFetch: ProxyFetch,
+): Promise<PRMergeState> {
+  const response = await ghFetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+    token,
+    proxyFetch,
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch PR merge state: ${response.status}`);
+  }
+  const pr = (await response.json()) as RawPRMergeData;
+  return {
+    state: pr.merged ? "merged" : (pr.state as "open" | "closed"),
+    mergeable: pr.mergeable,
+    mergeableState: pr.mergeable_state ?? "unknown",
+  };
+}

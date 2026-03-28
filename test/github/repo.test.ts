@@ -5,6 +5,7 @@ import {
   getCurrentBranch,
   findPRForBranch,
   listOpenPRs,
+  fetchPRMergeState,
 } from "../../src/github/repo.js";
 
 vi.mock("node:child_process", () => ({
@@ -188,5 +189,99 @@ describe("listOpenPRs", () => {
       json: async () => ({}),
     }));
     await expect(listOpenPRs("o", "r", "tok", pf)).rejects.toThrow("Failed to list PRs: 500");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fetchPRMergeState
+// ---------------------------------------------------------------------------
+
+describe("fetchPRMergeState", () => {
+  function mockFetch(data: unknown, ok = true, status = 200) {
+    return vi.fn(async () => ({
+      ok,
+      status,
+      headers: { get: () => null },
+      text: async () => JSON.stringify(data),
+      json: async () => data,
+    }));
+  }
+
+  it("returns open state with clean mergeable_state", async () => {
+    const pf = mockFetch({
+      state: "open",
+      merged: false,
+      mergeable: true,
+      mergeable_state: "clean",
+    });
+    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    expect(result).toEqual({
+      state: "open",
+      mergeable: true,
+      mergeableState: "clean",
+    });
+  });
+
+  it("returns merged state when pr.merged is true", async () => {
+    const pf = mockFetch({
+      state: "closed",
+      merged: true,
+      mergeable: false,
+      mergeable_state: "unknown",
+    });
+    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    expect(result.state).toBe("merged");
+  });
+
+  it("returns closed state when not merged", async () => {
+    const pf = mockFetch({
+      state: "closed",
+      merged: false,
+      mergeable: null,
+      mergeable_state: "unknown",
+    });
+    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    expect(result.state).toBe("closed");
+  });
+
+  it("returns null mergeable when still computing", async () => {
+    const pf = mockFetch({
+      state: "open",
+      merged: false,
+      mergeable: null,
+      mergeable_state: "unknown",
+    });
+    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    expect(result.mergeable).toBeNull();
+    expect(result.mergeableState).toBe("unknown");
+  });
+
+  it("returns dirty mergeableState for conflicting PR", async () => {
+    const pf = mockFetch({
+      state: "open",
+      merged: false,
+      mergeable: false,
+      mergeable_state: "dirty",
+    });
+    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    expect(result.mergeableState).toBe("dirty");
+    expect(result.mergeable).toBe(false);
+  });
+
+  it("defaults mergeableState to unknown when missing", async () => {
+    const pf = mockFetch({
+      state: "open",
+      merged: false,
+      mergeable: null,
+    });
+    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    expect(result.mergeableState).toBe("unknown");
+  });
+
+  it("throws on API error", async () => {
+    const pf = mockFetch(null, false, 404);
+    await expect(fetchPRMergeState("o", "r", 1, "tok", pf)).rejects.toThrow(
+      "Failed to fetch PR merge state: 404",
+    );
   });
 });
