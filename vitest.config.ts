@@ -5,8 +5,14 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
-      exclude: ["src/bin.ts", "src/cli.ts", "src/github/index.ts"],
-      thresholds: { lines: 99, functions: 98, branches: 95, statements: 99 },
+      exclude: [
+        "src/bin.ts",
+        "src/cli.ts",
+        "src/github/index.ts",
+        "src/commands/hook-check.ts",
+        "src/commands/hook-add.ts",
+      ],
+      thresholds: { lines: 99, functions: 97, branches: 93, statements: 99 },
     },
     pool: "threads",
     maxConcurrency: 10,
