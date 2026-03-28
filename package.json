@@ -9,7 +9,10 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "skills",
+    ".claude-plugin",
+    "SKILL.md"
   ],
   "devDependencies": {
     "@types/node": "latest",
