@@ -1,13 +1,10 @@
-// Standalone hook installer — bypasses incur.
-// Configures PostToolUse hooks in Claude Code and Codex globally.
-// Idempotent: checks if already configured, updates if needed.
-
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { z } from "incur";
 
-const HOOK_COMMAND = "npx -y bellwether@latest hook-check";
+const HOOK_COMMAND = "npx -y bellwether@latest hook-check --format json";
 const HOOK_TIMEOUT = 15;
 const BELLWETHER_MARKER = "bellwether@latest hook-check";
 
@@ -118,22 +115,18 @@ async function configureCodex(): Promise<string | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Main
+// Incur command
 // ---------------------------------------------------------------------------
 
-export async function run(): Promise<void> {
-  console.log("Configuring bellwether hooks...\n");
-
-  const claudePath = await configureClaude();
-  console.log(`  Claude Code: ${claudePath}`);
-
-  const codexPath = await configureCodex();
-  if (codexPath) {
-    console.log(`  Codex:       ${codexPath}`);
-  } else {
-    console.log("  Codex:       skipped (not installed)");
-  }
-
-  console.log("\nHooks will trigger when git push or gh pr create/ready is detected.");
-  console.log("The LLM will be prompted to run bellwether to monitor the PR.");
-}
+export const hookAddCommand = {
+  description: "Install PostToolUse hooks for Claude Code and Codex",
+  output: z.object({
+    claude: z.string().describe("Path to Claude Code settings file"),
+    codex: z.string().nullable().describe("Path to Codex hooks file, or null if not installed"),
+  }),
+  async run(c: { ok: (data: { claude: string; codex: string | null }) => unknown }) {
+    const claudePath = await configureClaude();
+    const codexPath = await configureCodex();
+    return c.ok({ claude: claudePath, codex: codexPath });
+  },
+};
