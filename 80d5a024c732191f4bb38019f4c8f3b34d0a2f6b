@@ -1,0 +1,23 @@
+.claude/settings.json
+  c9993986d7ed8774 15-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.20",
+  "base_commit_sha": "80d5a024c732191f4bb38019f4c8f3b34d0a2f6b",
+  "prompts": {
+    "c9993986d7ed8774": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "712bb880-a86f-4b64-bf78-7e711fbfe6a9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    }
+  }
+}
