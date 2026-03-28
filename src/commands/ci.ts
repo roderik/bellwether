@@ -93,9 +93,7 @@ export const ciCommand = {
               description: "Failed checks detected:",
               commands: [
                 {
-                  command: "reviews",
-                  args: { pr: prNumber },
-                  options: { unresolved: true },
+                  command: "reviews --unresolved",
                   description: "Check for review comments about failures",
                 },
               ],
@@ -109,9 +107,7 @@ export const ciCommand = {
               description: "Timed out, checks still running:",
               commands: [
                 {
-                  command: "ci",
-                  args: { pr: prNumber },
-                  options: { watch: true, timeout: opts.timeout * 2 },
+                  command: `ci --watch --timeout ${opts.timeout * 2}`,
                   description: "Retry with longer timeout",
                 },
               ],
@@ -132,9 +128,7 @@ export const ciCommand = {
               description: "Checks still running:",
               commands: [
                 {
-                  command: "ci",
-                  args: { pr: prNumber },
-                  options: { watch: true },
+                  command: "ci --watch",
                   description: "Watch until complete",
                 },
               ],
@@ -144,9 +138,7 @@ export const ciCommand = {
                 description: "Checks failing:",
                 commands: [
                   {
-                    command: "reviews",
-                    args: { pr: prNumber },
-                    options: { unresolved: true },
+                    command: "reviews --unresolved",
                     description: "Check review comments",
                   },
                 ],
