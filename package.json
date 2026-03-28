@@ -1,16 +1,22 @@
 {
   "name": "sheperd",
-  "module": "index.ts",
   "type": "module",
-  "private": true,
+  "version": "0.0.1",
+  "private": false,
   "bin": {
-    "sheperd": "./index.ts"
+    "sheperd": "./dist/bin.js",
+    "sheperd.src": "./src/bin.ts"
   },
+  "files": [
+    "dist",
+    "src"
+  ],
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/node": "latest",
     "oxfmt": "^0.42.0",
     "oxlint": "^1.57.0",
-    "oxlint-tsgolint": "^0.18.1"
+    "oxlint-tsgolint": "^0.18.1",
+    "zile": "latest"
   },
   "peerDependencies": {
     "typescript": "^6.0.2"
@@ -20,7 +26,11 @@
     "incur": "^0.3.13"
   },
   "scripts": {
+    "build": "zile",
+    "dev": "zile dev",
     "format": "oxfmt --write",
     "check": "oxlint --type-aware --type-check"
-  }
+  },
+  "sideEffects": false,
+  "exports": {}
 }

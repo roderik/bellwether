@@ -1,9 +1,12 @@
-import { ghFetch, type ProxyFetch } from "./fetch.ts";
+import { spawnSync } from "node:child_process";
+import { ghFetch, type ProxyFetch } from "./fetch.js";
 
 function spawnText(cmd: string[]): string | null {
-  const result = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
-  if (result.exitCode !== 0) return null;
-  return new TextDecoder().decode(result.stdout).trim();
+  const [command, ...args] = cmd;
+  if (!command) return null;
+  const result = spawnSync(command, args, { encoding: "utf-8" });
+  if (result.status !== 0) return null;
+  return result.stdout.trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -20,7 +23,7 @@ export interface RepoInfo {
 }
 
 export function getRepoInfo(): RepoInfo | null {
-  const envRepo = Bun.env.GH_REPO;
+  const envRepo = process.env.GH_REPO;
   if (envRepo) {
     const match = envRepo.match(/^([^/]+)\/([^/]+)$/);
     if (match?.[1] && match[2]) return { owner: match[1], repo: match[2] };

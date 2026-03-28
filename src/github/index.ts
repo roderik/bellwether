@@ -5,9 +5,9 @@ export {
   getProxyFetch,
   ghFetch,
   fetchAllPages,
-} from "./fetch.ts";
+} from "./fetch.js";
 
-export { getGitHubToken } from "./auth.ts";
+export { getGitHubToken } from "./auth.js";
 
 export {
   type RepoInfo,
@@ -17,7 +17,7 @@ export {
   getCurrentBranch,
   findPRForBranch,
   listOpenPRs,
-} from "./repo.ts";
+} from "./repo.js";
 
 export {
   type ProcessedComment,
@@ -28,10 +28,10 @@ export {
   filterComments,
   replyToComment,
   resolveThread,
-} from "./comments.ts";
+} from "./comments.js";
 
 export {
   type CheckRun,
   type CIStatus,
   fetchCIStatus,
-} from "./checks.ts";
+} from "./checks.js";

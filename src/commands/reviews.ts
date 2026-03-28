@@ -1,5 +1,5 @@
 import { z } from "incur";
-import { bootstrap, resolvePR } from "../context.ts";
+import { resolvePR, type Context } from "../context.js";
 import {
   type ProxyFetch,
   fetchPRComments,
@@ -7,183 +7,39 @@ import {
   filterComments,
   replyToComment,
   resolveThread,
-} from "../github/index.ts";
-import { c } from "../colors.ts";
-import { formatComment, formatDetailedComment } from "../format/comments.ts";
+} from "../github/index.js";
 
-// ---------------------------------------------------------------------------
-// Watch mode
-// ---------------------------------------------------------------------------
+const replySchema = z.object({
+  id: z.number().describe("Reply ID"),
+  user: z.string().describe("Author login"),
+  body: z.string().describe("Reply body (cleaned)"),
+  createdAt: z.string().describe("ISO timestamp"),
+  isBot: z.boolean().describe("Whether author is a bot"),
+});
 
-function formatTimestamp(): string {
-  return new Date().toISOString().replace("T", " ").slice(0, 19);
-}
-
-async function watchForComments(
-  context: {
-    owner: string;
-    repo: string;
-    prNumber: number;
-    prUrl: string;
-    token: string;
-    proxyFetch: ProxyFetch;
-  },
-  options: {
-    botsOnly?: boolean;
-    humansOnly?: boolean;
-    filter?: "unresolved" | "unanswered" | null;
-    watchInterval: number;
-    watchTimeout: number;
-  },
-) {
-  const { owner, repo, prNumber, prUrl, token, proxyFetch } = context;
-  const seenIds = new Set<number>();
-  const lastActivityTime = Date.now();
-
-  const filterDesc = options.botsOnly
-    ? "bots-only"
-    : options.humansOnly
-      ? "humans-only"
-      : "all";
-
-  console.log(`\n${c.bold}=== PR Comments Watch Mode ===${c.reset}`);
-  console.log(`${c.dim}PR #${prNumber}: ${prUrl}${c.reset}`);
-  console.log(
-    `${c.dim}Polling every ${options.watchInterval}s, exit after ${options.watchTimeout}s of inactivity${c.reset}`,
-  );
-  console.log(
-    `${c.dim}Filters: ${filterDesc}, ${options.filter || "all comments"}${c.reset}`,
-  );
-  console.log(`${c.dim}Started at ${formatTimestamp()}${c.reset}\n`);
-
-  // Initial fetch
-  const initialData = await fetchPRComments(
-    owner,
-    repo,
-    prNumber,
-    token,
-    proxyFetch,
-  );
-  const initialProcessed = processComments(initialData);
-  const initialFiltered = filterComments(initialProcessed, options);
-
-  for (const comment of initialFiltered) {
-    seenIds.add(comment.id);
-  }
-
-  console.log(
-    `${c.dim}[${formatTimestamp()}] Initial state: ${initialFiltered.length} existing comments tracked${c.reset}`,
-  );
-
-  if (initialFiltered.length > 0) {
-    console.log(`\n${c.yellow}=== EXISTING COMMENTS ===${c.reset}`);
-    for (const comment of initialFiltered) {
-      console.log(formatComment(comment));
-      console.log("");
-    }
-  }
-
-  let pollCount = 0;
-
-  while (true) {
-    await Bun.sleep(options.watchInterval * 1000);
-    pollCount++;
-
-    const rawData = await fetchPRComments(
-      owner,
-      repo,
-      prNumber,
-      token,
-      proxyFetch,
-    );
-    const processed = processComments(rawData);
-    const filtered = filterComments(processed, options);
-    const newComments = filtered.filter((cm) => !seenIds.has(cm.id));
-
-    if (newComments.length > 0) {
-      for (const comment of newComments) {
-        seenIds.add(comment.id);
-      }
-
-      console.log(
-        `\n${c.green}=== NEW COMMENTS DETECTED [${formatTimestamp()}] ===${c.reset}`,
-      );
-      console.log(
-        `${c.bold}Found ${newComments.length} new comment${newComments.length === 1 ? "" : "s"}${c.reset}`,
-      );
-
-      // Grace period for bot batches
-      console.log(
-        `${c.dim}Waiting 5s for additional comments...${c.reset}`,
-      );
-      await Bun.sleep(5_000);
-
-      const graceData = await fetchPRComments(
-        owner,
-        repo,
-        prNumber,
-        token,
-        proxyFetch,
-      );
-      const graceProcessed = processComments(graceData);
-      const graceFiltered = filterComments(graceProcessed, options);
-      const lateComments = graceFiltered.filter(
-        (cm) => !seenIds.has(cm.id),
-      );
-
-      for (const comment of lateComments) {
-        seenIds.add(comment.id);
-        newComments.push(comment);
-      }
-
-      if (lateComments.length > 0) {
-        console.log(
-          `${c.bold}Caught ${lateComments.length} additional comment${lateComments.length === 1 ? "" : "s"}${c.reset}`,
-        );
-      }
-
-      console.log("");
-      for (const comment of newComments) {
-        console.log(formatComment(comment));
-        console.log("");
-      }
-
-      console.log(`${c.dim}--- JSON for processing ---${c.reset}`);
-      console.log(JSON.stringify(newComments, null, 2));
-      console.log(`${c.dim}--- end JSON ---${c.reset}`);
-
-      console.log(
-        `\n${c.green}=== WATCH: EXITING WITH NEW COMMENTS ===${c.reset}`,
-      );
-      return;
-    } else {
-      const inactiveSeconds = Math.round(
-        (Date.now() - lastActivityTime) / 1000,
-      );
-      console.log(
-        `${c.dim}[${formatTimestamp()}] Poll #${pollCount}: No new comments (${inactiveSeconds}s/${options.watchTimeout}s idle)${c.reset}`,
-      );
-
-      if (inactiveSeconds >= options.watchTimeout) {
-        console.log(`\n${c.green}=== WATCH COMPLETE ===${c.reset}`);
-        console.log(
-          `${c.dim}No new comments after ${options.watchTimeout}s of inactivity.${c.reset}`,
-        );
-        console.log(
-          `${c.dim}Total comments tracked: ${seenIds.size}${c.reset}`,
-        );
-        return;
-      }
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Command definition
-// ---------------------------------------------------------------------------
+const commentSchema = z.object({
+  id: z.number().describe("Comment ID (use with --detail or --reply)"),
+  type: z
+    .enum(["review_comment", "issue_comment", "review"])
+    .describe("CODE = inline, COMMENT = PR-level, REVIEW = review summary"),
+  user: z.string().describe("Author login"),
+  isBot: z.boolean().describe("Whether author is a bot"),
+  path: z.string().nullable().describe("File path (inline comments only)"),
+  line: z.number().nullable().describe("Line number (inline comments only)"),
+  diffHunk: z.string().nullable().describe("Surrounding diff context"),
+  body: z.string().describe("Comment body (cleaned of bot boilerplate)"),
+  createdAt: z.string().describe("ISO timestamp"),
+  updatedAt: z.string().describe("ISO timestamp of last update"),
+  url: z.string().describe("GitHub URL"),
+  replies: z.array(replySchema).describe("Thread replies"),
+  hasHumanReply: z.boolean().describe("Whether a human has replied"),
+  hasAnyReply: z.boolean().describe("Whether any reply exists"),
+  isResolved: z.boolean().describe("Whether the thread is resolved"),
+});
 
 export const reviewsCommand = {
   description: "List, filter, reply to, and watch PR review comments",
+  hint: "Comment IDs shown in output can be used with --detail and --reply. Bot meta-comments (Vercel deploy status, CodeRabbit summaries, etc.) are automatically filtered out.",
   args: z.object({
     pr: z.coerce
       .number()
@@ -207,10 +63,6 @@ export const reviewsCommand = {
       .boolean()
       .default(false)
       .describe("Only show comments from humans"),
-    expanded: z
-      .boolean()
-      .default(false)
-      .describe("Show full detail for each comment"),
     reply: z
       .string()
       .optional()
@@ -241,17 +93,61 @@ export const reviewsCommand = {
     unanswered: "a",
     botsOnly: "b",
     humansOnly: "H",
-    expanded: "e",
     reply: "r",
     detail: "d",
     watch: "w",
     interval: "i",
   },
-  async run(ctx: any) {
-    const bctx = await bootstrap();
-    const { prNumber, prUrl } = await resolvePR(bctx, ctx.args.pr);
-    const { token, repoInfo, proxyFetch } = bctx;
-    const opts = ctx.options;
+  usage: [
+    {},
+    { args: { pr: true } },
+    { args: { pr: true }, options: { unresolved: true, botsOnly: true } },
+    { args: { pr: true }, options: { detail: true } },
+    { args: { pr: true }, options: { reply: true } },
+    { args: { pr: true }, options: { reply: true, resolve: true } },
+    { args: { pr: true }, options: { watch: true } },
+  ],
+  output: z.object({
+    comments: z.array(commentSchema).optional().describe("List of comments (list mode)"),
+    comment: commentSchema.optional().describe("Single comment (detail mode)"),
+    replied: z.boolean().optional().describe("Whether reply was posted (reply mode)"),
+    commentId: z.number().optional().describe("ID of comment replied to (reply mode)"),
+    url: z.string().optional().describe("URL of posted reply (reply mode)"),
+    resolved: z.boolean().optional().describe("Whether thread was resolved (reply mode)"),
+    newComments: z.array(commentSchema).optional().describe("Newly detected comments (watch mode)"),
+    total: z.number().optional().describe("Count of returned comments"),
+    timedOut: z.boolean().optional().describe("Whether watch timed out without new comments"),
+  }),
+  examples: [
+    { description: "List all comments for current branch's PR" },
+    { args: { pr: 42 }, description: "List comments for PR #42" },
+    {
+      options: { unresolved: true, botsOnly: true },
+      description: "Unresolved bot comments",
+    },
+    {
+      options: { detail: 12345 },
+      description: "Full detail for comment #12345",
+    },
+    {
+      options: { reply: "12345:Fixed in latest commit" },
+      description: "Reply to comment #12345",
+    },
+    {
+      options: { reply: "12345:Addressed", resolve: true },
+      description: "Reply and resolve thread",
+    },
+    {
+      options: { watch: true, botsOnly: true, interval: 15 },
+      description: "Watch for new bot comments, poll every 15s",
+    },
+  ],
+  async run(c: any) {
+    const ctx: Context = c.var.ctx;
+    const { prNumber } = await resolvePR(ctx, c.args.pr);
+    const { token, repoInfo, proxyFetch } = ctx;
+    const opts = c.options;
+
     const filterOpts = {
       botsOnly: opts.botsOnly,
       humansOnly: opts.humansOnly,
@@ -266,10 +162,22 @@ export const reviewsCommand = {
     if (opts.reply) {
       const colonIdx = opts.reply.indexOf(":");
       if (colonIdx === -1) {
-        console.error(
-          `${c.red}Error: --reply format is <id>:<message>${c.reset}`,
-        );
-        process.exit(1);
+        return c.error({
+          code: "INVALID_ARGS",
+          message: "--reply format is <id>:<message>",
+          retryable: true,
+          cta: {
+            description: "Correct usage:",
+            commands: [
+              {
+                command: "reviews",
+                args: { pr: prNumber },
+                options: { reply: "12345:your message here" },
+                description: "Reply with id:message format",
+              },
+            ],
+          },
+        });
       }
       const commentId = Number(opts.reply.slice(0, colonIdx));
       const message = opts.reply.slice(colonIdx + 1);
@@ -284,16 +192,10 @@ export const reviewsCommand = {
         proxyFetch,
       );
 
-      if (ctx.agent) {
-        return { replied: true, commentId, url: result.html_url };
-      }
-
-      console.log(`${c.green}✓ Reply posted successfully${c.reset}`);
-      console.log(`  ${c.dim}${result.html_url}${c.reset}`);
-
+      let resolved: boolean | undefined;
       if (opts.resolve) {
         try {
-          const resolveResult = await resolveThread(
+          const res = await resolveThread(
             repoInfo.owner,
             repoInfo.repo,
             prNumber,
@@ -301,26 +203,33 @@ export const reviewsCommand = {
             token,
             proxyFetch,
           );
-          if ("resolved" in resolveResult && resolveResult.resolved) {
-            console.log(`${c.green}✓ Thread resolved${c.reset}`);
-          } else if (
-            "alreadyResolved" in resolveResult &&
-            resolveResult.alreadyResolved
-          ) {
-            console.log(`${c.dim}Thread already resolved${c.reset}`);
-          } else if ("skipped" in resolveResult && resolveResult.skipped) {
-            console.log(
-              `${c.dim}Thread resolution skipped (${resolveResult.reason})${c.reset}`,
-            );
-          }
-        } catch (error: any) {
-          console.warn(
-            `${c.yellow}Reply posted, but thread resolution failed: ${error.message}${c.reset}`,
-          );
+          resolved = "resolved" in res && res.resolved;
+        } catch {
+          resolved = false;
         }
       }
 
-      return { replied: true, commentId };
+      return c.ok(
+        { replied: true, commentId, url: result.html_url, resolved },
+        {
+          cta: {
+            description: "Next:",
+            commands: [
+              {
+                command: "reviews",
+                args: { pr: prNumber },
+                options: { detail: commentId },
+                description: "View updated comment",
+              },
+              {
+                command: "reviews",
+                args: { pr: prNumber },
+                description: "List all comments",
+              },
+            ],
+          },
+        },
+      );
     }
 
     // Detail
@@ -333,39 +242,70 @@ export const reviewsCommand = {
         proxyFetch,
       );
       const processed = processComments(rawData);
-      const comment = processed.find((cm: any) => cm.id === opts.detail);
-
+      const comment = processed.find((cm) => cm.id === opts.detail);
       if (!comment) {
-        console.error(
-          `${c.red}Error: Comment ${opts.detail} not found in PR #${prNumber}${c.reset}`,
-        );
-        process.exit(1);
+        return c.error({
+          code: "NOT_FOUND",
+          message: `Comment ${opts.detail} not found in PR #${prNumber}`,
+          retryable: false,
+          cta: {
+            description: "Try:",
+            commands: [
+              {
+                command: "reviews",
+                args: { pr: prNumber },
+                description: "List all comments to find valid IDs",
+              },
+            ],
+          },
+        });
       }
-
-      if (ctx.agent) return comment;
-
-      console.log(formatDetailedComment(comment));
-      return comment;
+      return c.ok(
+        { comment },
+        {
+          cta: {
+            description: "Actions:",
+            commands: [
+              {
+                command: "reviews",
+                args: { pr: prNumber },
+                options: { reply: `${comment.id}:your message` },
+                description: "Reply to this comment",
+              },
+              {
+                command: "reviews",
+                args: { pr: prNumber },
+                options: { reply: `${comment.id}:Addressed`, resolve: true },
+                description: "Reply and resolve",
+              },
+            ],
+          },
+        },
+      );
     }
 
     // Watch
     if (opts.watch) {
-      await watchForComments(
-        {
-          owner: repoInfo.owner,
-          repo: repoInfo.repo,
-          prNumber,
-          prUrl,
-          token,
-          proxyFetch,
-        },
-        {
-          ...filterOpts,
-          watchInterval: opts.interval,
-          watchTimeout: opts.timeout,
-        },
+      const result = await watchForComments(
+        { owner: repoInfo.owner, repo: repoInfo.repo, prNumber, token, proxyFetch },
+        { ...filterOpts, watchInterval: opts.interval, watchTimeout: opts.timeout },
       );
-      return;
+      return c.ok(result, {
+        cta:
+          result.total > 0
+            ? {
+                description: "Process new comments:",
+                commands: [
+                  {
+                    command: "reviews",
+                    args: { pr: prNumber },
+                    options: { unresolved: true },
+                    description: "List unresolved comments",
+                  },
+                ],
+              }
+            : undefined,
+      });
     }
 
     // List (default)
@@ -379,28 +319,90 @@ export const reviewsCommand = {
     const processed = processComments(rawData);
     const filtered = filterComments(processed, filterOpts);
 
-    if (ctx.agent) return filtered;
+    return c.ok(
+      { comments: filtered, total: filtered.length },
+      filtered.length > 0
+        ? {
+            cta: {
+              description: "Actions:",
+              commands: [
+                {
+                  command: "reviews",
+                  args: { pr: prNumber },
+                  options: { detail: filtered[0]!.id },
+                  description: "View first comment detail",
+                },
+                {
+                  command: "reviews",
+                  args: { pr: prNumber },
+                  options: { watch: true },
+                  description: "Watch for new comments",
+                },
+              ],
+            },
+          }
+        : undefined,
+    );
+  },
+};
 
-    if (filtered.length === 0) {
-      const filterDesc = opts.unresolved
-        ? "unresolved "
-        : opts.unanswered
-          ? "unanswered "
-          : "";
-      console.log(`${c.green}No ${filterDesc}comments found.${c.reset}`);
-      return filtered;
+// ---------------------------------------------------------------------------
+// Watch helper
+// ---------------------------------------------------------------------------
+
+async function watchForComments(
+  context: {
+    owner: string;
+    repo: string;
+    prNumber: number;
+    token: string;
+    proxyFetch: ProxyFetch;
+  },
+  options: {
+    botsOnly?: boolean;
+    humansOnly?: boolean;
+    filter?: "unresolved" | "unanswered" | null;
+    watchInterval: number;
+    watchTimeout: number;
+  },
+) {
+  const { owner, repo, prNumber, token, proxyFetch } = context;
+  const seenIds = new Set<number>();
+  const startTime = Date.now();
+
+  const initialData = await fetchPRComments(owner, repo, prNumber, token, proxyFetch);
+  const initialProcessed = processComments(initialData);
+  const initialFiltered = filterComments(initialProcessed, options);
+  for (const comment of initialFiltered) seenIds.add(comment.id);
+
+  while (true) {
+    await new Promise<void>((r) => setTimeout(r, options.watchInterval * 1000));
+
+    const rawData = await fetchPRComments(owner, repo, prNumber, token, proxyFetch);
+    const processed = processComments(rawData);
+    const filtered = filterComments(processed, options);
+    const newComments = filtered.filter((cm) => !seenIds.has(cm.id));
+
+    if (newComments.length > 0) {
+      for (const cm of newComments) seenIds.add(cm.id);
+
+      // Grace period for bot batches
+      await new Promise<void>((r) => setTimeout(r, 5_000));
+      const graceData = await fetchPRComments(owner, repo, prNumber, token, proxyFetch);
+      const graceProcessed = processComments(graceData);
+      const graceFiltered = filterComments(graceProcessed, options);
+      for (const cm of graceFiltered) {
+        if (!seenIds.has(cm.id)) {
+          seenIds.add(cm.id);
+          newComments.push(cm);
+        }
+      }
+
+      return { newComments, total: newComments.length, timedOut: false };
     }
 
-    console.log(
-      `${c.bold}Found ${filtered.length} comment${filtered.length === 1 ? "" : "s"}${c.reset}\n`,
-    );
-
-    const formatter = opts.expanded ? formatDetailedComment : formatComment;
-    const separator = opts.expanded
-      ? "\n\n" + "=".repeat(60) + "\n\n"
-      : "\n\n";
-
-    console.log(filtered.map((cm: any) => formatter(cm)).join(separator));
-    return filtered;
-  },
-} as const;
+    if (Math.round((Date.now() - startTime) / 1000) >= options.watchTimeout) {
+      return { newComments: [], total: 0, timedOut: true };
+    }
+  }
+}

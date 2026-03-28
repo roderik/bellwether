@@ -1,11 +1,33 @@
 import { z } from "incur";
-import { bootstrap, resolvePR } from "../context.ts";
-import { fetchCIStatus } from "../github/index.ts";
-import { c } from "../colors.ts";
-import { formatCIStatus, formatCISummary } from "../format/checks.ts";
+import { resolvePR, type Context } from "../context.js";
+import { fetchCIStatus } from "../github/index.js";
+
+const checkRunSchema = z.object({
+  id: z.number().describe("Check run ID"),
+  name: z.string().describe("Check name"),
+  status: z
+    .enum(["queued", "in_progress", "completed"])
+    .describe("Execution status"),
+  conclusion: z
+    .enum([
+      "success",
+      "failure",
+      "neutral",
+      "cancelled",
+      "skipped",
+      "timed_out",
+      "action_required",
+    ])
+    .nullable()
+    .describe("Result (null while running)"),
+  started_at: z.string().nullable().describe("ISO start time"),
+  completed_at: z.string().nullable().describe("ISO completion time"),
+  html_url: z.string().describe("GitHub URL"),
+});
 
 export const ciCommand = {
   description: "Show CI/check run status for a PR",
+  hint: "With --watch, polls until all checks complete, fail, or timeout. Returns immediately on first poll without --watch.",
   args: z.object({
     pr: z.coerce
       .number()
@@ -17,30 +39,47 @@ export const ciCommand = {
       .boolean()
       .default(false)
       .describe("Poll until all checks complete"),
-    interval: z.coerce
-      .number()
-      .default(15)
-      .describe("Poll interval in seconds"),
-    timeout: z.coerce
-      .number()
-      .default(600)
-      .describe("Timeout in seconds"),
+    interval: z.coerce.number().default(15).describe("Poll interval in seconds"),
+    timeout: z.coerce.number().default(600).describe("Timeout in seconds"),
   }),
   alias: { watch: "w", interval: "i" },
-  async run(ctx: any) {
-    const bctx = await bootstrap();
-    const { prNumber, prUrl } = await resolvePR(bctx, ctx.args.pr);
-    const { token, repoInfo, proxyFetch } = bctx;
-    const opts = ctx.options;
+  usage: [
+    {},
+    { args: { pr: true } },
+    { args: { pr: true }, options: { watch: true } },
+    { args: { pr: true }, options: { watch: true, interval: true, timeout: true } },
+  ],
+  output: z.object({
+    sha: z.string().describe("Head commit SHA"),
+    total: z.number().describe("Total number of checks"),
+    completed: z.number().describe("Checks that finished"),
+    pending: z.number().describe("Checks still running or queued"),
+    passing: z.number().describe("Checks that succeeded/skipped"),
+    failing: z.number().describe("Checks that failed/timed out"),
+    checks: z.array(checkRunSchema).describe("Individual check runs"),
+    allPassing: z.boolean().optional().describe("True when all checks passed"),
+    timedOut: z.boolean().optional().describe("True when watch timed out"),
+  }),
+  examples: [
+    { description: "Show CI status for current branch's PR" },
+    { args: { pr: 123 }, description: "CI status for PR #123" },
+    {
+      options: { watch: true },
+      description: "Poll until checks complete",
+    },
+    {
+      args: { pr: 123 },
+      options: { watch: true, interval: 10, timeout: 300 },
+      description: "Watch PR #123, poll every 10s, 5min timeout",
+    },
+  ],
+  async run(c: any) {
+    const ctx: Context = c.var.ctx;
+    const { prNumber } = await resolvePR(ctx, c.args.pr);
+    const { token, repoInfo, proxyFetch } = ctx;
+    const opts = c.options;
 
     if (opts.watch) {
-      console.log(
-        `${c.bold}Watching CI for PR #${prNumber}${c.reset} ${c.dim}${prUrl}${c.reset}`,
-      );
-      console.log(
-        `${c.dim}Polling every ${opts.interval}s, timeout ${opts.timeout}s${c.reset}\n`,
-      );
-
       const start = Date.now();
       while (true) {
         const status = await fetchCIStatus(
@@ -50,34 +89,46 @@ export const ciCommand = {
           token,
           proxyFetch,
         );
-        console.log(formatCIStatus(status));
 
-        const summary = formatCISummary(status);
-        if (summary.allPassing) {
-          console.log(`\n${c.green}All checks passed!${c.reset}`);
-          return { ...status, allPassing: true };
-        }
-        if (summary.anyFailing && !summary.anyPending) {
-          console.log(`\n${c.red}Some checks failed.${c.reset}`);
-          return { ...status, allPassing: false };
+        const allPassing = status.failing === 0 && status.pending === 0;
+        if (allPassing) return c.ok({ ...status, allPassing: true });
+
+        if (status.failing > 0 && status.pending === 0) {
+          return c.ok({ ...status, allPassing: false }, {
+            cta: {
+              description: "Failed checks detected:",
+              commands: [
+                {
+                  command: "reviews",
+                  args: { pr: prNumber },
+                  options: { unresolved: true },
+                  description: "Check for review comments about failures",
+                },
+              ],
+            },
+          });
         }
 
-        const elapsed = (Date.now() - start) / 1000;
-        if (elapsed >= opts.timeout) {
-          console.log(
-            `\n${c.yellow}Timeout reached (${opts.timeout}s).${c.reset}`,
-          );
-          return { ...status, timedOut: true };
+        if ((Date.now() - start) / 1000 >= opts.timeout) {
+          return c.ok({ ...status, timedOut: true }, {
+            cta: {
+              description: "Timed out, checks still running:",
+              commands: [
+                {
+                  command: "ci",
+                  args: { pr: prNumber },
+                  options: { watch: true, timeout: opts.timeout * 2 },
+                  description: "Retry with longer timeout",
+                },
+              ],
+            },
+          });
         }
 
-        console.log(
-          `\n${c.dim}Waiting ${opts.interval}s...${c.reset}\n`,
-        );
-        await Bun.sleep(opts.interval * 1000);
+        await new Promise<void>((r) => setTimeout(r, opts.interval * 1000));
       }
     }
 
-    // Single fetch
     const status = await fetchCIStatus(
       repoInfo.owner,
       repoInfo.repo,
@@ -86,12 +137,32 @@ export const ciCommand = {
       proxyFetch,
     );
 
-    if (ctx.agent) return status;
-
-    console.log(
-      `${c.bold}PR #${prNumber}${c.reset} ${c.dim}${prUrl}${c.reset}\n`,
-    );
-    console.log(formatCIStatus(status));
-    return status;
+    return c.ok(status, {
+      cta: status.pending > 0
+        ? {
+            description: "Checks still running:",
+            commands: [
+              {
+                command: "ci",
+                args: { pr: prNumber },
+                options: { watch: true },
+                description: "Watch until complete",
+              },
+            ],
+          }
+        : status.failing > 0
+          ? {
+              description: "Checks failing:",
+              commands: [
+                {
+                  command: "reviews",
+                  args: { pr: prNumber },
+                  options: { unresolved: true },
+                  description: "Check review comments",
+                },
+              ],
+            }
+          : undefined,
+    });
   },
-} as const;
+};

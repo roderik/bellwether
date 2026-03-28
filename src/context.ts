@@ -8,8 +8,7 @@ import {
   listOpenPRs,
   type RepoInfo,
   type ProxyFetch,
-} from "./github/index.ts";
-import { c } from "./colors.ts";
+} from "./github/index.js";
 
 export interface Context {
   token: string;
@@ -20,23 +19,25 @@ export interface Context {
 export async function bootstrap(): Promise<Context> {
   const token = await getGitHubToken();
   if (!token) {
-    console.error(
-      `${c.red}Error: GitHub token not found${c.reset}\nSet GITHUB_TOKEN env var, or authenticate with: gh auth login`,
+    throw new Error(
+      [
+        "GitHub token not found.",
+        "Fix: set GITHUB_TOKEN or GH_TOKEN env var, add to .env.local, or run `gh auth login`.",
+      ].join(" "),
     );
-    return process.exit(1) as never;
   }
 
   const repoInfo = getRepoInfo();
   if (!repoInfo) {
-    console.error(
-      `${c.red}Error: Could not determine repository from git remote${c.reset}`,
+    throw new Error(
+      [
+        "Could not determine repository.",
+        "Fix: run from a git repo with a github.com remote, or set GH_REPO=owner/repo.",
+      ].join(" "),
     );
-    return process.exit(1) as never;
   }
 
-  const proxyFetch = getProxyFetch();
-
-  return { token, repoInfo, proxyFetch };
+  return { token, repoInfo, proxyFetch: getProxyFetch() };
 }
 
 export async function resolvePR(
@@ -52,7 +53,6 @@ export async function resolvePR(
     };
   }
 
-  // Try current branch
   const branch = getCurrentBranch();
   if (branch && branch !== "main" && branch !== "master") {
     const pr = await findPRForBranch(
@@ -62,21 +62,14 @@ export async function resolvePR(
       token,
       proxyFetch,
     );
-    if (pr) {
-      return { prNumber: pr.number, prUrl: pr.html_url };
-    }
+    if (pr) return { prNumber: pr.number, prUrl: pr.html_url };
   }
 
-  // Interactive selection
-  const prs = await listOpenPRs(
-    repoInfo.owner,
-    repoInfo.repo,
-    token,
-    proxyFetch,
-  );
+  const prs = await listOpenPRs(repoInfo.owner, repoInfo.repo, token, proxyFetch);
   if (prs.length === 0) {
-    console.error(`${c.red}No open PRs found${c.reset}`);
-    return process.exit(1) as never;
+    throw new Error(
+      "No open PRs found. Fix: pass a PR number as argument, e.g. `sheperd reviews 123`.",
+    );
   }
 
   const selected = await clack.select({
@@ -88,9 +81,7 @@ export async function resolvePR(
     })),
   });
 
-  if (clack.isCancel(selected)) {
-    process.exit(0);
-  }
+  if (clack.isCancel(selected)) process.exit(0);
 
   const pr = prs.find((p) => p.number === selected)!;
   return { prNumber: pr.number, prUrl: pr.html_url };

@@ -1,6 +1,11 @@
 import { join } from "node:path";
-import { $ } from "bun";
+import { tmpdir } from "node:os";
+import { mkdtempSync } from "node:fs";
+import { readFile, rm } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 
+const require = createRequire(import.meta.url);
 const USER_AGENT = "sheperd";
 
 // ---------------------------------------------------------------------------
@@ -69,7 +74,7 @@ function parseLastHeaderBlock(headerContent: string): string {
 
 function createCurlFetch(): ProxyFetch {
   return async (url: string, options: ProxyFetchOptions = {}) => {
-    const tempDir = (await $`mktemp -d`.text()).trim();
+    const tempDir = mkdtempSync(join(tmpdir(), "sheperd-"));
     const headersFile = join(tempDir, "headers.txt");
     const bodyFile = join(tempDir, "body.txt");
 
@@ -103,15 +108,14 @@ function createCurlFetch(): ProxyFetch {
     args.push(String(url));
 
     try {
-      const result = Bun.spawnSync(["curl", ...args], {
-        stdout: "pipe",
-        stderr: "pipe",
+      const result = spawnSync("curl", args, {
+        encoding: "utf-8",
         timeout: 65_000,
       });
-      const statusCodeRaw = new TextDecoder().decode(result.stdout).trim();
+      const statusCodeRaw = result.stdout.trim();
       const status = Number.parseInt(statusCodeRaw, 10);
-      const body = await Bun.file(bodyFile).text();
-      const headersRaw = await Bun.file(headersFile).text();
+      const body = await readFile(bodyFile, "utf-8");
+      const headersRaw = await readFile(headersFile, "utf-8");
       const lastHeaderBlock = parseLastHeaderBlock(headersRaw);
 
       return {
@@ -126,7 +130,7 @@ function createCurlFetch(): ProxyFetch {
         },
       };
     } finally {
-      await $`rm -rf ${tempDir}`.quiet();
+      await rm(tempDir, { recursive: true, force: true });
     }
   };
 }
@@ -136,7 +140,7 @@ function createCurlFetch(): ProxyFetch {
 // ---------------------------------------------------------------------------
 
 export function getProxyFetch(): ProxyFetch {
-  const proxyUrl = Bun.env.HTTPS_PROXY || Bun.env.https_proxy;
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
   if (proxyUrl) {
     try {
       const { ProxyAgent, fetch: undiciFetch } = require("undici");

@@ -1,4 +1,4 @@
-import { fetchAllPages, ghFetch, type ProxyFetch } from "./fetch.ts";
+import { fetchAllPages, ghFetch, type ProxyFetch } from "./fetch.js";
 
 // ---------------------------------------------------------------------------
 // Types
