@@ -2,61 +2,45 @@
 name: bellwether
 description: >-
   Bring the current PR to a mergeable state: CI green, all review comments resolved,
-  no merge conflicts. Single check-and-fix cycle designed to run via /loop
-  (e.g., /loop 1m /bellwether). Use when the user wants to keep a PR green,
-  auto-fix CI, resolve review comments, or says "get this merged".
+  no merge conflicts. Self-contained — watches CI, fixes issues, watches again until
+  merge-ready. Use when the user wants to keep a PR green, auto-fix CI, resolve
+  review comments, or says "get this merged".
 user-invocable: true
 ---
 
-# Bellwether — PR Check-and-Fix Cycle
+# Bellwether — Drive PR to Merge-Ready
 
-Run `bellwether check` to get PR state, CI status, and review comments in one call. Fix what's broken, push, stop. The next cycle picks up the new state.
+Self-contained cycle: watch CI → fix failures → address reviews → watch again → until merge-ready.
 
-## Step 1: Gather state
+## The Loop
 
-```bash
-bellwether check
+```
+1. bellwether check --watch        (blocks until CI completes)
+2. If pr.ready=true → done, report "merge-ready"
+3. If pr.state=merged|closed → done, report status
+4. If CI failures → fix them (Step 2), push, go to 1
+5. If unresolved reviews → address them (Step 3), push, go to 1
+6. If pr.mergeable=dirty|behind → /sync, push, go to 1
+7. If timed out → go to 1 (restart watch)
 ```
 
-This returns three sections:
+## What `bellwether check --watch` returns
 
-- **pr** — `state` (open/closed/merged), `mergeable` (clean/dirty/behind/blocked/unstable), `ready` (boolean — true only when all conditions met)
-- **ci** — SHA, check summary, and for each failing check: the filtered error log
+Three sections:
+
+- **pr** — `state` (open/closed/merged), `mergeable` (clean/dirty/behind/blocked/unstable), `ready` (true when all conditions met)
+- **ci** — SHA, check summary, and for each failing check: the filtered error log with file paths and line numbers
 - **reviews** — unresolved review comments with full body, file path, and line number
-
-### Terminal states
-
-| `pr.ready` | Meaning | Action |
-|---|---|---|
-| `true` | CI green, zero unresolved reviews, mergeable=clean | PR is merge-ready. Cancel cron, stop. |
-| `false` | Something needs attention | Continue to Step 2/3/4 |
-
-| `pr.state` | Action |
-|---|---|
-| `merged` or `closed` | Cancel cron, stop. |
-| `open` | Continue. |
-
-| `pr.mergeable` | Action |
-|---|---|
-| `dirty` | Merge conflicts — run `/sync` to rebase, push, stop. |
-| `behind` | Branch behind main — run `/sync`, push, stop. |
-| `blocked` | Required reviews or merge conflicts — check `dirty` first. |
-| `clean` / `unstable` / `has_hooks` | No merge issues — continue. |
-| `unknown` | GitHub still computing — stop, next cycle re-checks. |
-
-If checks are still pending (0 failing, N pending), stop — the next cycle will re-check.
 
 ## Step 2: Fix CI failures
 
 For each `FAIL` key in the CI section:
 
-1. **Read the error log** — it contains the actual output (TypeScript errors, test failures, lint violations) with file paths and line numbers.
-2. **Fix the code** — make the minimal change that resolves the root cause.
+1. **Read the error log** — it contains actual compiler/test output with file paths and line numbers.
+2. **Fix the code** — minimal change that resolves the root cause.
 3. **Verify locally** — run the same check that failed.
-4. **Stage, commit, push** — stage files by name (never `git add -A`), commit with a descriptive message, push.
-5. **Stop** — the push triggers new CI. The next cycle verifies it passed.
-
-Do NOT continue to Step 3 after pushing CI fixes. New bot review comments will arrive from the push. The next cycle handles them.
+4. **Stage, commit, push** — stage files by name (never `git add -A`).
+5. **Go to step 1** — restart the watch. New CI runs, new bot comments may arrive.
 
 ## Step 3: Address review comments
 
@@ -67,55 +51,42 @@ For each `REVIEW` key in the reviews section:
 **Bot comments** (CodeRabbit, Copilot, Cursor Bugbot):
 - **True positive** — real bug → fix the code
 - **False positive** — bot doesn't understand the pattern → won't fix
-- **Uncertain** — ask the user via `AskUserQuestion`
+- **Uncertain** — ask the user
 
 **Human comments**:
 - **Actionable** — fix the code
-- **Discussion** — unclear approach → ask the user
+- **Discussion** — ask the user
 - **Already addressed** — reply only
 
 ### Fix and commit
 
-1. Fix all true positives and actionable items in a single commit
-2. Run local checks to verify
-3. Stage files by name, commit, push
+Fix all true positives and actionable items in a single commit. Verify locally, push.
 
-### Reply — single shared comment for top-level reviews
+### Reply
 
-After pushing, reply to all comments in a **single batch comment** on the PR rather than one reply per comment. This reduces notification noise and keeps the PR timeline clean.
-
-For inline code review comments (with a file path), use individual replies with `--resolve`:
+For inline code review comments (with file path), reply individually with `--resolve`:
 
 ```bash
 bellwether check --reply "<id>:Fixed in <hash>. <description>" --resolve
 ```
 
-For top-level PR comments from bots (no file path), post a single summary reply addressing all findings:
+For top-level bot comments (no file path), post a single summary reply:
 
 ```
 Addressed review findings in <hash>:
 - REVIEW 456: Fixed null check in src/foo.ts
-- REVIEW 789: Won't fix — pattern is intentional (uses fallback by design)
-- REVIEW 123: Fixed type mismatch in src/bar.ts
+- REVIEW 789: Won't fix — pattern is intentional
 ```
 
-Every comment gets a response — no silent ignores. Use `--resolve` on every reply to close the thread.
+Every comment gets a response. Use `--resolve` on every reply.
 
-## Step 4: Watch (optional)
-
-For continuous monitoring between cycles:
-
-```bash
-bellwether check --watch
-```
-
-Polls until CI reaches a terminal state, then returns PR state + CI + reviews. Use this when waiting for CI after a push instead of sleeping.
+After all replies, go to step 1 — restart the watch.
 
 ## Principles
 
-- **One fix per cycle** — fix CI OR reviews, not both. Push and let the next cycle verify.
+- **One fix per watch cycle** — fix CI OR reviews, not both. Push and restart watch.
 - **Minimal changes** — don't refactor unrelated code.
-- **Every comment gets a response** — replies train bots and document decisions.
+- **Every comment gets a response** — no silent ignores.
 - **Ask when uncertain** — don't guess on architectural questions.
 - **Verify before pushing** — always run the failing check locally first.
-- **Never exit unmonitored** — if the PR is not merge-ready and no cron is running, keep checking.
+- **Never stop until terminal** — if `pr.ready` is false, keep going.
