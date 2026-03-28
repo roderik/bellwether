@@ -13,9 +13,11 @@
   ],
   "devDependencies": {
     "@types/node": "latest",
+    "@vitest/coverage-v8": "^4.1.2",
     "oxfmt": "^0.42.0",
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "^0.18.1",
+    "vitest": "^4.1.2",
     "zile": "latest"
   },
   "peerDependencies": {
@@ -29,7 +31,9 @@
     "build": "zile",
     "dev": "zile dev",
     "format": "oxfmt --write",
-    "check": "oxlint --type-aware --type-check"
+    "check": "oxlint --type-aware --type-check",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "sideEffects": false,
   "exports": {}

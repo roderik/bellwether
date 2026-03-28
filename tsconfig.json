@@ -8,8 +8,10 @@
     "moduleDetection": "force",
     "jsx": "react-jsx",
     "allowJs": true,
+    "types": ["node"],
 
     // Emit
+    "rootDir": "src",
     "outDir": "dist",
     "declaration": true,
     "verbatimModuleSyntax": true,
@@ -25,5 +27,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  "exclude": ["dist", "coverage", "node_modules"]
 }

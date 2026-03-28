@@ -31,7 +31,7 @@ export {
 } from "./comments.js";
 
 export {
-  type CheckRun,
+  type FailingCheck,
   type CIStatus,
   fetchCIStatus,
 } from "./checks.js";

@@ -17,6 +17,8 @@ jobs:
 
       - run: bun check
 
+      - run: bun test:coverage
+
       - run: bun run build
 
   preview:

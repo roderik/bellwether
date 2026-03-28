@@ -2,27 +2,11 @@ import { z } from "incur";
 import { resolvePR, type Context } from "../context.js";
 import { fetchCIStatus } from "../github/index.js";
 
-const checkRunSchema = z.object({
-  id: z.number().describe("Check run ID"),
+const failingCheckSchema = z.object({
   name: z.string().describe("Check name"),
-  status: z
-    .enum(["queued", "in_progress", "completed"])
-    .describe("Execution status"),
-  conclusion: z
-    .enum([
-      "success",
-      "failure",
-      "neutral",
-      "cancelled",
-      "skipped",
-      "timed_out",
-      "action_required",
-    ])
-    .nullable()
-    .describe("Result (null while running)"),
-  started_at: z.string().nullable().describe("ISO start time"),
-  completed_at: z.string().nullable().describe("ISO completion time"),
-  html_url: z.string().describe("GitHub URL"),
+  conclusion: z.string().describe("Result"),
+  html_url: z.string().describe("GitHub URL for full logs"),
+  log: z.string().describe("Filtered error output from the failed step"),
 });
 
 export const ciCommand = {
@@ -52,11 +36,12 @@ export const ciCommand = {
   output: z.object({
     sha: z.string().describe("Head commit SHA"),
     total: z.number().describe("Total number of checks"),
-    completed: z.number().describe("Checks that finished"),
-    pending: z.number().describe("Checks still running or queued"),
     passing: z.number().describe("Checks that succeeded/skipped"),
     failing: z.number().describe("Checks that failed/timed out"),
-    checks: z.array(checkRunSchema).describe("Individual check runs"),
+    pending: z.number().describe("Checks still running or queued"),
+    passed: z.array(z.string()).describe("Names of passing checks"),
+    in_progress: z.array(z.string()).describe("Names of running checks"),
+    failures: z.array(failingCheckSchema).describe("Failing checks with annotations"),
     allPassing: z.boolean().optional().describe("True when all checks passed"),
     timedOut: z.boolean().optional().describe("True when watch timed out"),
   }),
