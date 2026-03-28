@@ -26,7 +26,7 @@ const cli = Cli.create("bellwether", {
     HTTPS_PROXY: z.string().optional().describe("HTTPS proxy URL for corporate/cloud environments"),
   }),
   sync: {
-    depth: 0,
+    depth: 1,
     include: ["_root"],
     suggestions: [
       "check CI and reviews for this PR",
