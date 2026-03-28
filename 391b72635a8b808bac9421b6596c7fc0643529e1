@@ -1,0 +1,23 @@
+SKILL.md
+  e009581148d72631 3-7,9-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "391b72635a8b808bac9421b6596c7fc0643529e1",
+  "prompts": {
+    "e009581148d72631": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f51e534-2a01-488e-a0b8-9ae6cf077596",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 89,
+      "total_deletions": 2,
+      "accepted_lines": 89,
+      "overriden_lines": 0
+    }
+  }
+}
