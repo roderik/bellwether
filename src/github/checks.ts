@@ -111,18 +111,21 @@ export async function fetchCIStatus(
   prNumber: number,
   token: string,
   proxyFetch: ProxyFetch,
+  headSha?: string,
 ): Promise<CIStatus> {
-  // Get PR head SHA
-  const prResponse = await ghFetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
-    token,
-    proxyFetch,
-  );
-  if (!prResponse.ok) {
-    throw new Error(`Failed to fetch PR: ${prResponse.status}`);
+  let sha = headSha;
+  if (!sha) {
+    const prResponse = await ghFetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+      token,
+      proxyFetch,
+    );
+    if (!prResponse.ok) {
+      throw new Error(`Failed to fetch PR: ${prResponse.status}`);
+    }
+    const pr = await prResponse.json();
+    sha = pr.head.sha as string;
   }
-  const pr = await prResponse.json();
-  const sha = pr.head.sha as string;
 
   // Fetch check runs for that SHA
   const checksResponse = await ghFetch(

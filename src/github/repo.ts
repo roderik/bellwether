@@ -65,7 +65,7 @@ export interface PR {
   number: number;
   title: string;
   html_url: string;
-  head: { ref: string };
+  head: { ref: string; sha: string };
   state: string;
 }
 

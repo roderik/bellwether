@@ -43,7 +43,7 @@ export async function bootstrap(): Promise<Context> {
 export async function resolvePR(
   ctx: Context,
   prArg?: number,
-): Promise<{ prNumber: number; prUrl: string }> {
+): Promise<{ prNumber: number; prUrl: string; headSha?: string }> {
   const { repoInfo, token, proxyFetch } = ctx;
 
   if (prArg) {
@@ -57,7 +57,7 @@ export async function resolvePR(
   if (branch && branch !== "main" && branch !== "master") {
     const pr = await findPRForBranch(repoInfo.owner, repoInfo.repo, branch, token, proxyFetch);
     if (pr) {
-      return { prNumber: pr.number, prUrl: pr.html_url };
+      return { prNumber: pr.number, prUrl: pr.html_url, headSha: pr.head.sha };
     }
   }
 
@@ -82,5 +82,5 @@ export async function resolvePR(
   }
 
   const pr = prs.find((p) => p.number === selected)!;
-  return { prNumber: pr.number, prUrl: pr.html_url };
+  return { prNumber: pr.number, prUrl: pr.html_url, headSha: pr.head.sha };
 }

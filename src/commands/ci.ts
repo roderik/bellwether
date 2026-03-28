@@ -1,4 +1,4 @@
-import  { type Context } from "../context.js";
+import { type Context } from "../context.js";
 import { fetchCIStatus, type CIStatus } from "../github/index.js";
 
 export function flatten(
@@ -29,8 +29,16 @@ export function flatten(
 export async function getCISection(
   ctx: Context,
   prNumber: number,
+  headSha?: string,
 ): Promise<{ status: CIStatus; flat: Record<string, string | number | boolean> }> {
   const { token, repoInfo, proxyFetch } = ctx;
-  const status = await fetchCIStatus(repoInfo.owner, repoInfo.repo, prNumber, token, proxyFetch);
+  const status = await fetchCIStatus(
+    repoInfo.owner,
+    repoInfo.repo,
+    prNumber,
+    token,
+    proxyFetch,
+    headSha,
+  );
   return { status, flat: flatten(status) };
 }

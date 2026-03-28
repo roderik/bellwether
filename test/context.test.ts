@@ -14,7 +14,13 @@ vi.mock("@clack/prompts", () => ({
   isCancel: vi.fn(() => false),
 }));
 
-import { getGitHubToken, getRepoInfo, getCurrentBranch, findPRForBranch, listOpenPRs } from "../src/github/index.js";
+import {
+  getGitHubToken,
+  getRepoInfo,
+  getCurrentBranch,
+  findPRForBranch,
+  listOpenPRs,
+} from "../src/github/index.js";
 import * as clack from "@clack/prompts";
 import { bootstrap, resolvePR } from "../src/context.js";
 
@@ -76,17 +82,27 @@ describe("resolvePR", () => {
       number: 10,
       html_url: "https://github.com/o/r/pull/10",
       title: "Cool",
-      head: { ref: "feat/cool" },
+      head: { sha: "abc", ref: "feat/cool" },
       state: "open",
     });
     const result = await resolvePR(ctx);
-    expect(result).toEqual({ prNumber: 10, prUrl: "https://github.com/o/r/pull/10" });
+    expect(result).toEqual({
+      prNumber: 10,
+      prUrl: "https://github.com/o/r/pull/10",
+      headSha: "abc",
+    });
   });
 
   it("skips branch detection on main", async () => {
     mockGetBranch.mockReturnValue("main");
     mockListPRs.mockResolvedValue([
-      { number: 5, title: "PR 5", html_url: "url5", head: { ref: "feat" }, state: "open" },
+      {
+        number: 5,
+        title: "PR 5",
+        html_url: "url5",
+        head: { sha: "abc", ref: "feat" },
+        state: "open",
+      },
     ]);
     mockSelect.mockResolvedValue(5 as any);
     const result = await resolvePR(ctx);
@@ -96,7 +112,13 @@ describe("resolvePR", () => {
   it("skips branch detection on master", async () => {
     mockGetBranch.mockReturnValue("master");
     mockListPRs.mockResolvedValue([
-      { number: 7, title: "PR 7", html_url: "url7", head: { ref: "fix" }, state: "open" },
+      {
+        number: 7,
+        title: "PR 7",
+        html_url: "url7",
+        head: { sha: "abc", ref: "fix" },
+        state: "open",
+      },
     ]);
     mockSelect.mockResolvedValue(7 as any);
     const result = await resolvePR(ctx);
@@ -107,7 +129,7 @@ describe("resolvePR", () => {
     mockGetBranch.mockReturnValue("feat/other");
     mockFindPR.mockResolvedValue(null);
     mockListPRs.mockResolvedValue([
-      { number: 3, title: "PR 3", html_url: "url3", head: { ref: "x" }, state: "open" },
+      { number: 3, title: "PR 3", html_url: "url3", head: { sha: "abc", ref: "x" }, state: "open" },
     ]);
     mockSelect.mockResolvedValue(3 as any);
     const result = await resolvePR(ctx);
@@ -117,7 +139,7 @@ describe("resolvePR", () => {
   it("falls back to interactive select when branch is null", async () => {
     mockGetBranch.mockReturnValue(null);
     mockListPRs.mockResolvedValue([
-      { number: 1, title: "PR 1", html_url: "url1", head: { ref: "a" }, state: "open" },
+      { number: 1, title: "PR 1", html_url: "url1", head: { sha: "abc", ref: "a" }, state: "open" },
     ]);
     mockSelect.mockResolvedValue(1 as any);
     const result = await resolvePR(ctx);
@@ -133,7 +155,7 @@ describe("resolvePR", () => {
   it("exits on cancel", async () => {
     mockGetBranch.mockReturnValue(null);
     mockListPRs.mockResolvedValue([
-      { number: 1, title: "PR 1", html_url: "url1", head: { ref: "a" }, state: "open" },
+      { number: 1, title: "PR 1", html_url: "url1", head: { sha: "abc", ref: "a" }, state: "open" },
     ]);
     mockIsCancel.mockReturnValue(true);
     mockSelect.mockResolvedValue(Symbol("cancel") as any);

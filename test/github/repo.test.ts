@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getRepoRoot, getRepoInfo, getCurrentBranch, findPRForBranch, listOpenPRs } from "../../src/github/repo.js";
+import {
+  getRepoRoot,
+  getRepoInfo,
+  getCurrentBranch,
+  findPRForBranch,
+  listOpenPRs,
+} from "../../src/github/repo.js";
 
 vi.mock("node:child_process", () => ({
   spawnSync: vi.fn(),
@@ -13,11 +19,25 @@ beforeEach(() => {
 });
 
 function setSpawnResult(stdout: string, status = 0) {
-  mockSpawnSync.mockReturnValueOnce({ stdout, status, stderr: "", pid: 1, output: [], signal: null });
+  mockSpawnSync.mockReturnValueOnce({
+    stdout,
+    status,
+    stderr: "",
+    pid: 1,
+    output: [],
+    signal: null,
+  });
 }
 
 function setSpawnFail() {
-  mockSpawnSync.mockReturnValueOnce({ stdout: "", status: 1, stderr: "error", pid: 1, output: [], signal: null });
+  mockSpawnSync.mockReturnValueOnce({
+    stdout: "",
+    status: 1,
+    stderr: "error",
+    pid: 1,
+    output: [],
+    signal: null,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -115,7 +135,13 @@ describe("findPRForBranch", () => {
   }
 
   it("returns first PR", async () => {
-    const pr = { number: 42, title: "test", html_url: "url", head: { ref: "feat" }, state: "open" };
+    const pr = {
+      number: 42,
+      title: "test",
+      html_url: "url",
+      head: { sha: "abc", ref: "feat" },
+      state: "open",
+    };
     const pf = mockFetch([pr]);
     const result = await findPRForBranch("o", "r", "feat", "tok", pf);
     expect(result).toEqual(pr);
@@ -129,7 +155,9 @@ describe("findPRForBranch", () => {
 
   it("throws on API error", async () => {
     const pf = mockFetch(null, false, 404);
-    await expect(findPRForBranch("o", "r", "feat", "tok", pf)).rejects.toThrow("Failed to find PR: 404");
+    await expect(findPRForBranch("o", "r", "feat", "tok", pf)).rejects.toThrow(
+      "Failed to find PR: 404",
+    );
   });
 });
 

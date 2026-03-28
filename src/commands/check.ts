@@ -67,7 +67,7 @@ export const checkCommand = {
   ],
   async run(c: any) {
     const ctx: Context = c.var.ctx;
-    const { prNumber } = await resolvePR(ctx, c.args.pr);
+    const { prNumber, headSha } = await resolvePR(ctx, c.args.pr);
     const opts = c.options;
 
     // Reply mode — no CI fetch needed
@@ -97,7 +97,7 @@ export const checkCommand = {
       const start = Date.now();
       while (true) {
         const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
-          getCISection(ctx, prNumber),
+          getCISection(ctx, prNumber, headSha),
           getReviewsList(ctx, prNumber, filterOpts),
         ]);
 
@@ -153,7 +153,7 @@ export const checkCommand = {
 
     // Default: fetch both in parallel
     const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
-      getCISection(ctx, prNumber),
+      getCISection(ctx, prNumber, headSha),
       getReviewsList(ctx, prNumber, filterOpts),
     ]);
 
