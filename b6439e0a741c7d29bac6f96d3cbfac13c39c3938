@@ -1,0 +1,35 @@
+test/context.test.ts
+  e009581148d72631 17-22,85,89-93,99-105,115-121,132,142,158
+test/github/repo.test.ts
+  e009581148d72631 2-7,22-29,33-40,138-144,158-160
+src/github/repo.ts
+  e009581148d72631 68
+src/context.ts
+  e009581148d72631 46,60,85
+src/commands/ci.ts
+  e009581148d72631 1,32,35-42
+src/commands/check.ts
+  e009581148d72631 70,100,156
+src/github/checks.ts
+  e009581148d72631 114,116-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "b6439e0a741c7d29bac6f96d3cbfac13c39c3938",
+  "prompts": {
+    "e009581148d72631": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f51e534-2a01-488e-a0b8-9ae6cf077596",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 93,
+      "total_deletions": 32,
+      "accepted_lines": 91,
+      "overriden_lines": 0
+    }
+  }
+}
