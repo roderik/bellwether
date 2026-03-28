@@ -1,0 +1,26 @@
+{
+  "name": "sheperd",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "sheperd": "./index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxfmt": "^0.42.0",
+    "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "^0.18.1"
+  },
+  "peerDependencies": {
+    "typescript": "^6.0.2"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.1.0",
+    "incur": "^0.3.13"
+  },
+  "scripts": {
+    "format": "oxfmt --write",
+    "check": "oxlint --type-aware --type-check"
+  }
+}
