@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { Cli, z } from "incur";
 import { bootstrap, type Context } from "./context.js";
 import { checkCommand } from "./commands/check.js";
@@ -19,6 +20,7 @@ const cli = Cli.create("bellwether", {
   }),
   sync: {
     depth: 0,
+    cwd: join(import.meta.dirname, ".."),
     include: ["_root"],
     suggestions: [
       "check CI and reviews for this PR",
