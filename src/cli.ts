@@ -33,7 +33,7 @@ cli.use(async (c, next) => {
   await next();
 });
 
-cli.command("check", checkCommand as any);
+cli.command("check", checkCommand as unknown as Parameters<typeof cli.command>[1]);
 
 export { cli };
 export default cli;

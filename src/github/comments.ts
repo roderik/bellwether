@@ -133,10 +133,46 @@ function cleanBody(body: string | null | undefined): string {
 // Fetch & process
 // ---------------------------------------------------------------------------
 
-interface RawCommentData {
-  reviewComments: any[];
-  issueComments: any[];
-  reviews: any[];
+interface RawGitHubUser {
+  login: string;
+}
+
+interface RawReviewComment {
+  id: number;
+  user?: RawGitHubUser;
+  body: string;
+  path: string;
+  line: number | null;
+  original_line: number | null;
+  diff_hunk: string | null;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+  in_reply_to_id?: number;
+}
+
+interface RawIssueComment {
+  id: number;
+  user?: RawGitHubUser;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+}
+
+interface RawReview {
+  id: number;
+  user?: RawGitHubUser;
+  body: string | null;
+  state: string;
+  submitted_at: string;
+  html_url: string;
+}
+
+export interface RawCommentData {
+  reviewComments: RawReviewComment[];
+  issueComments: RawIssueComment[];
+  reviews: RawReview[];
 }
 
 export async function fetchPRComments(
@@ -149,9 +185,21 @@ export async function fetchPRComments(
   const baseUrl = `https://api.github.com/repos/${owner}/${repo}`;
 
   const [reviewComments, issueComments, reviews] = await Promise.all([
-    fetchAllPages<any>(`${baseUrl}/pulls/${prNumber}/comments?per_page=100`, token, proxyFetch),
-    fetchAllPages<any>(`${baseUrl}/issues/${prNumber}/comments?per_page=100`, token, proxyFetch),
-    fetchAllPages<any>(`${baseUrl}/pulls/${prNumber}/reviews?per_page=100`, token, proxyFetch),
+    fetchAllPages<RawReviewComment>(
+      `${baseUrl}/pulls/${prNumber}/comments?per_page=100`,
+      token,
+      proxyFetch,
+    ),
+    fetchAllPages<RawIssueComment>(
+      `${baseUrl}/issues/${prNumber}/comments?per_page=100`,
+      token,
+      proxyFetch,
+    ),
+    fetchAllPages<RawReview>(
+      `${baseUrl}/pulls/${prNumber}/reviews?per_page=100`,
+      token,
+      proxyFetch,
+    ),
   ]);
 
   return { reviewComments, issueComments, reviews };
@@ -169,7 +217,7 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
       }
       repliesMap.get(comment.in_reply_to_id)!.push({
         id: comment.id,
-        user: comment.user?.login,
+        user: comment.user?.login ?? "unknown",
         body: cleanBody(comment.body),
         createdAt: comment.created_at,
         isBot: isBot(comment.user?.login),
@@ -184,7 +232,7 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
     if (comment.in_reply_to_id) {
       continue;
     }
-    if (isMetaComment(comment.user?.login, comment.body)) {
+    if (isMetaComment(comment.user?.login ?? "", comment.body)) {
       continue;
     }
 
@@ -195,7 +243,7 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
     processed.push({
       id: comment.id,
       type: "review_comment",
-      user: comment.user?.login,
+      user: comment.user?.login ?? "unknown",
       isBot: isBot(comment.user?.login),
       path: comment.path,
       // oxlint-disable-next-line typescript/prefer-nullish-coalescing -- 0 is "no line", intentional falsy check
@@ -214,14 +262,14 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
 
   // Issue comments (general PR comments)
   for (const comment of issueComments) {
-    if (isMetaComment(comment.user?.login, comment.body)) {
+    if (isMetaComment(comment.user?.login ?? "", comment.body)) {
       continue;
     }
 
     processed.push({
       id: comment.id,
       type: "issue_comment",
-      user: comment.user?.login,
+      user: comment.user?.login ?? "unknown",
       isBot: isBot(comment.user?.login),
       path: null,
       line: null,
@@ -242,7 +290,7 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
     if (isBot(review.user?.login)) {
       continue;
     }
-    if (isMetaComment(review.user?.login, review.body)) {
+    if (isMetaComment(review.user?.login ?? "", review.body ?? "")) {
       continue;
     }
     if (!review.body?.trim()) {
@@ -252,7 +300,7 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
     processed.push({
       id: review.id,
       type: "review",
-      user: review.user?.login,
+      user: review.user?.login ?? "unknown",
       isBot: false,
       path: null,
       line: null,
@@ -307,7 +355,7 @@ export async function replyToComment(
   message: string,
   token: string,
   proxyFetch: ProxyFetch,
-): Promise<any> {
+): Promise<{ html_url: string }> {
   // Try review comment reply endpoint first
   const response = await ghFetch(
     `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/comments/${commentId}/replies`,
@@ -340,10 +388,10 @@ export async function replyToComment(
       throw new Error(`Failed to reply: ${issueResponse.status} - ${error}`);
     }
 
-    return issueResponse.json();
+    return issueResponse.json() as Promise<{ html_url: string }>;
   }
 
-  return response.json();
+  return response.json() as Promise<{ html_url: string }>;
 }
 
 export async function resolveThread(
@@ -377,8 +425,14 @@ export async function resolveThread(
     }
   `;
 
+  interface ReviewThreadNode {
+    id: string;
+    isResolved: boolean;
+    comments: { nodes: { databaseId: number }[] };
+  }
+
   let cursor: string | null = null;
-  let thread: any = null;
+  let thread: ReviewThreadNode | null = null;
 
   while (!thread) {
     const response = await ghFetch("https://api.github.com/graphql", token, proxyFetch, {
@@ -394,8 +448,20 @@ export async function resolveThread(
       throw new Error(`GraphQL query failed: ${response.status}`);
     }
 
-    const data = await response.json();
-    if (data.errors) {
+    const data = (await response.json()) as {
+      errors?: { message: string }[];
+      data?: {
+        repository?: {
+          pullRequest?: {
+            reviewThreads?: {
+              pageInfo: { hasNextPage: boolean; endCursor: string | null };
+              nodes: ReviewThreadNode[];
+            };
+          };
+        };
+      };
+    };
+    if (data.errors?.[0]) {
       throw new Error(`GraphQL error: ${data.errors[0].message}`);
     }
 
@@ -404,9 +470,10 @@ export async function resolveThread(
       break;
     }
 
-    thread = reviewThreads.nodes.find((t: any) =>
-      t.comments.nodes.some((c: any) => c.databaseId === commentId),
-    );
+    thread =
+      reviewThreads.nodes.find((t: ReviewThreadNode) =>
+        t.comments.nodes.some((c: { databaseId: number }) => c.databaseId === commentId),
+      ) ?? null;
 
     if (!thread && reviewThreads.pageInfo.hasNextPage) {
       cursor = reviewThreads.pageInfo.endCursor;
@@ -444,8 +511,10 @@ export async function resolveThread(
     throw new Error(`Failed to resolve thread: ${resolveResponse.status}`);
   }
 
-  const resolveData = await resolveResponse.json();
-  if (resolveData.errors) {
+  const resolveData = (await resolveResponse.json()) as {
+    errors?: { message: string }[];
+  };
+  if (resolveData.errors?.[0]) {
     throw new Error(`GraphQL error: ${resolveData.errors[0].message}`);
   }
 

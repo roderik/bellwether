@@ -1,7 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
 import { fetchCIStatus } from "../../src/github/checks.js";
 
-function mockProxyFetch(responses: { ok: boolean; status: number; data?: any; text?: string; headers?: Record<string, string> }[]) {
+function mockProxyFetch(
+  responses: {
+    ok: boolean;
+    status: number;
+    data?: unknown;
+    text?: string;
+    headers?: Record<string, string>;
+  }[],
+) {
   let callIdx = 0;
   return vi.fn(async () => {
     const resp = responses[callIdx++];
@@ -30,13 +38,45 @@ describe("fetchCIStatus", () => {
     const pf = mockProxyFetch([
       { ok: true, status: 200, data: { head: { sha: "abc123" } } },
       {
-        ok: true, status: 200, data: {
+        ok: true,
+        status: 200,
+        data: {
           check_runs: [
-            { id: 1, name: "build", status: "completed", conclusion: "success", html_url: "https://github.com/o/r/actions/runs/1/job/1" },
-            { id: 2, name: "test", status: "completed", conclusion: "failure", html_url: "https://github.com/o/r/actions/runs/1/job/2" },
-            { id: 3, name: "lint", status: "in_progress", conclusion: null, html_url: "https://github.com/o/r/actions/runs/1/job/3" },
-            { id: 4, name: "deploy", status: "completed", conclusion: "skipped", html_url: "https://github.com/o/r/actions/runs/1/job/4" },
-            { id: 5, name: "audit", status: "completed", conclusion: "neutral", html_url: "https://github.com/o/r/actions/runs/1/job/5" },
+            {
+              id: 1,
+              name: "build",
+              status: "completed",
+              conclusion: "success",
+              html_url: "https://github.com/o/r/actions/runs/1/job/1",
+            },
+            {
+              id: 2,
+              name: "test",
+              status: "completed",
+              conclusion: "failure",
+              html_url: "https://github.com/o/r/actions/runs/1/job/2",
+            },
+            {
+              id: 3,
+              name: "lint",
+              status: "in_progress",
+              conclusion: null,
+              html_url: "https://github.com/o/r/actions/runs/1/job/3",
+            },
+            {
+              id: 4,
+              name: "deploy",
+              status: "completed",
+              conclusion: "skipped",
+              html_url: "https://github.com/o/r/actions/runs/1/job/4",
+            },
+            {
+              id: 5,
+              name: "audit",
+              status: "completed",
+              conclusion: "neutral",
+              html_url: "https://github.com/o/r/actions/runs/1/job/5",
+            },
           ],
         },
       },
@@ -64,10 +104,24 @@ describe("fetchCIStatus", () => {
     const pf = mockProxyFetch([
       { ok: true, status: 200, data: { head: { sha: "abc" } } },
       {
-        ok: true, status: 200, data: {
+        ok: true,
+        status: 200,
+        data: {
           check_runs: [
-            { id: 1, name: "slow", status: "completed", conclusion: "timed_out", html_url: "https://github.com/o/r/actions/runs/1/job/1" },
-            { id: 2, name: "needs-action", status: "completed", conclusion: "action_required", html_url: "https://github.com/o/r/actions/runs/1/job/2" },
+            {
+              id: 1,
+              name: "slow",
+              status: "completed",
+              conclusion: "timed_out",
+              html_url: "https://github.com/o/r/actions/runs/1/job/1",
+            },
+            {
+              id: 2,
+              name: "needs-action",
+              status: "completed",
+              conclusion: "action_required",
+              html_url: "https://github.com/o/r/actions/runs/1/job/2",
+            },
           ],
         },
       },
@@ -84,9 +138,17 @@ describe("fetchCIStatus", () => {
     const pf = mockProxyFetch([
       { ok: true, status: 200, data: { head: { sha: "abc" } } },
       {
-        ok: true, status: 200, data: {
+        ok: true,
+        status: 200,
+        data: {
           check_runs: [
-            { id: 1, name: "cancelled", status: "completed", conclusion: "cancelled", html_url: "u" },
+            {
+              id: 1,
+              name: "cancelled",
+              status: "completed",
+              conclusion: "cancelled",
+              html_url: "u",
+            },
           ],
         },
       },
@@ -102,7 +164,9 @@ describe("fetchCIStatus", () => {
     const pf = mockProxyFetch([
       { ok: true, status: 200, data: { head: { sha: "abc" } } },
       {
-        ok: true, status: 200, data: {
+        ok: true,
+        status: 200,
+        data: {
           check_runs: [
             { id: 1, name: "queued-job", status: "queued", conclusion: null, html_url: "u" },
           ],
@@ -125,16 +189,26 @@ describe("fetchCIStatus", () => {
       { ok: true, status: 200, data: { head: { sha: "abc" } } },
       { ok: false, status: 500, data: {} },
     ]);
-    await expect(fetchCIStatus("o", "r", 1, "tok", pf)).rejects.toThrow("Failed to fetch checks: 500");
+    await expect(fetchCIStatus("o", "r", 1, "tok", pf)).rejects.toThrow(
+      "Failed to fetch checks: 500",
+    );
   });
 
   it("handles log fetch failure gracefully", async () => {
     const pf = mockProxyFetch([
       { ok: true, status: 200, data: { head: { sha: "abc" } } },
       {
-        ok: true, status: 200, data: {
+        ok: true,
+        status: 200,
+        data: {
           check_runs: [
-            { id: 1, name: "test", status: "completed", conclusion: "failure", html_url: "https://github.com/o/r/actions/runs/1/job/1" },
+            {
+              id: 1,
+              name: "test",
+              status: "completed",
+              conclusion: "failure",
+              html_url: "https://github.com/o/r/actions/runs/1/job/1",
+            },
           ],
         },
       },
@@ -149,8 +223,34 @@ describe("fetchCIStatus", () => {
     let callIdx = 0;
     const pf = vi.fn(async () => {
       callIdx++;
-      if (callIdx === 1) {return { ok: true, status: 200, headers: { get: () => null }, text: async () => "", json: async () => ({ head: { sha: "abc" } }) };}
-      if (callIdx === 2) {return { ok: true, status: 200, headers: { get: () => null }, text: async () => "", json: async () => ({ check_runs: [{ id: 1, name: "test", status: "completed", conclusion: "failure", html_url: "https://github.com/o/r/actions/runs/1/job/1" }] }) };}
+      if (callIdx === 1) {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          text: async () => "",
+          json: async () => ({ head: { sha: "abc" } }),
+        };
+      }
+      if (callIdx === 2) {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          text: async () => "",
+          json: async () => ({
+            check_runs: [
+              {
+                id: 1,
+                name: "test",
+                status: "completed",
+                conclusion: "failure",
+                html_url: "https://github.com/o/r/actions/runs/1/job/1",
+              },
+            ],
+          }),
+        };
+      }
       throw new Error("network error");
     });
     const result = await fetchCIStatus("o", "r", 1, "tok", pf);
@@ -161,9 +261,17 @@ describe("fetchCIStatus", () => {
     const pf = mockProxyFetch([
       { ok: true, status: 200, data: { head: { sha: "abc" } } },
       {
-        ok: true, status: 200, data: {
+        ok: true,
+        status: 200,
+        data: {
           check_runs: [
-            { id: 1, name: "test", status: "completed", conclusion: "failure", html_url: "https://github.com/o/r/actions/runs/1" },
+            {
+              id: 1,
+              name: "test",
+              status: "completed",
+              conclusion: "failure",
+              html_url: "https://github.com/o/r/actions/runs/1",
+            },
           ],
         },
       },
@@ -187,9 +295,17 @@ describe("fetchCIStatus", () => {
     const pf = mockProxyFetch([
       { ok: true, status: 200, data: { head: { sha: "abc" } } },
       {
-        ok: true, status: 200, data: {
+        ok: true,
+        status: 200,
+        data: {
           check_runs: [
-            { id: 1, name: "test", status: "completed", conclusion: "failure", html_url: "https://github.com/o/r/actions/runs/1/job/1" },
+            {
+              id: 1,
+              name: "test",
+              status: "completed",
+              conclusion: "failure",
+              html_url: "https://github.com/o/r/actions/runs/1/job/1",
+            },
           ],
         },
       },
@@ -214,9 +330,17 @@ describe("fetchCIStatus", () => {
     const pf = mockProxyFetch([
       { ok: true, status: 200, data: { head: { sha: "abc" } } },
       {
-        ok: true, status: 200, data: {
+        ok: true,
+        status: 200,
+        data: {
           check_runs: [
-            { id: 1, name: "test", status: "completed", conclusion: "failure", html_url: "https://github.com/o/r/actions/runs/1/job/1" },
+            {
+              id: 1,
+              name: "test",
+              status: "completed",
+              conclusion: "failure",
+              html_url: "https://github.com/o/r/actions/runs/1/job/1",
+            },
           ],
         },
       },

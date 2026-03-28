@@ -1,11 +1,18 @@
 import { describe, it, expect, vi } from "vitest";
-import { processComments, filterComments, fetchPRComments, replyToComment, resolveThread } from "../../src/github/comments.js";
+import {
+  processComments,
+  filterComments,
+  fetchPRComments,
+  replyToComment,
+  resolveThread,
+  type ProcessedComment,
+} from "../../src/github/comments.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeReviewComment(overrides: Record<string, any> = {}) {
+function makeReviewComment(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
     user: { login: "alice" },
@@ -22,7 +29,7 @@ function makeReviewComment(overrides: Record<string, any> = {}) {
   };
 }
 
-function makeIssueComment(overrides: Record<string, any> = {}) {
+function makeIssueComment(overrides: Record<string, unknown> = {}) {
   return {
     id: 100,
     user: { login: "bob" },
@@ -34,7 +41,7 @@ function makeIssueComment(overrides: Record<string, any> = {}) {
   };
 }
 
-function makeReview(overrides: Record<string, any> = {}) {
+function makeReview(overrides: Record<string, unknown> = {}) {
   return {
     id: 200,
     user: { login: "carol" },
@@ -46,7 +53,9 @@ function makeReview(overrides: Record<string, any> = {}) {
   };
 }
 
-function mockProxyFetch(responses: { ok: boolean; status: number; data: any; headers?: Record<string, string> }[]) {
+function mockProxyFetch(
+  responses: { ok: boolean; status: number; data: unknown; headers?: Record<string, string> }[],
+) {
   let callIdx = 0;
   return vi.fn(async () => {
     const resp = responses[callIdx++];
@@ -218,7 +227,9 @@ describe("processComments", () => {
   // Meta-comment filtering
   it("filters vercel meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "vercel[bot]" }, body: "[vc]: some deploy status" })],
+      reviewComments: [
+        makeReviewComment({ user: { login: "vercel[bot]" }, body: "[vc]: some deploy status" }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -236,7 +247,9 @@ describe("processComments", () => {
 
   it("filters supabase meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "supabase[bot]" }, body: "[supa]: status" })],
+      reviewComments: [
+        makeReviewComment({ user: { login: "supabase[bot]" }, body: "[supa]: status" }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -254,7 +267,12 @@ describe("processComments", () => {
 
   it("filters cursor meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "cursor[bot]" }, body: "Cursor Bugbot has reviewed your changes and found issues" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "cursor[bot]" },
+          body: "Cursor Bugbot has reviewed your changes and found issues",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -263,7 +281,12 @@ describe("processComments", () => {
 
   it("filters cursor meta-comments from non-bot login", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "cursor" }, body: "Cursor Bugbot has reviewed your changes and found issues" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "cursor" },
+          body: "Cursor Bugbot has reviewed your changes and found issues",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -272,7 +295,12 @@ describe("processComments", () => {
 
   it("filters copilot meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "copilot-pull-request-reviewer[bot]" }, body: "Pull request overview summary" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "copilot-pull-request-reviewer[bot]" },
+          body: "Pull request overview summary",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -281,7 +309,12 @@ describe("processComments", () => {
 
   it("filters copilot meta-comments from non-bot login", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "copilot-pull-request-reviewer" }, body: "Pull request overview summary" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "copilot-pull-request-reviewer" },
+          body: "Pull request overview summary",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -290,7 +323,12 @@ describe("processComments", () => {
 
   it("filters coderabbitai meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "coderabbitai[bot]" }, body: "<!-- This is an auto-generated comment: summarize by coderabbit.ai -->Summary" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "coderabbitai[bot]" },
+          body: "<!-- This is an auto-generated comment: summarize by coderabbit.ai -->Summary",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -299,7 +337,12 @@ describe("processComments", () => {
 
   it("filters coderabbitai meta-comments from non-bot login", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "coderabbitai" }, body: "<!-- This is an auto-generated comment: summarize by coderabbit.ai -->Summary" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "coderabbitai" },
+          body: "<!-- This is an auto-generated comment: summarize by coderabbit.ai -->Summary",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -308,7 +351,12 @@ describe("processComments", () => {
 
   it("filters sourcery-ai meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "sourcery-ai[bot]" }, body: "<!-- Generated by sourcery-ai[bot]: review -->" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "sourcery-ai[bot]" },
+          body: "<!-- Generated by sourcery-ai[bot]: review -->",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -317,7 +365,12 @@ describe("processComments", () => {
 
   it("filters sourcery-ai meta-comments from non-bot login", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "sourcery-ai" }, body: "<!-- Generated by sourcery-ai[bot]: review -->" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "sourcery-ai" },
+          body: "<!-- Generated by sourcery-ai[bot]: review -->",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -326,7 +379,12 @@ describe("processComments", () => {
 
   it("filters codacy meta-comments (Analysis Summary)", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "codacy-production[bot]" }, body: "Codacy's Analysis Summary report" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "codacy-production[bot]" },
+          body: "Codacy's Analysis Summary report",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -335,7 +393,12 @@ describe("processComments", () => {
 
   it("filters codacy meta-comments (Coverage summary)", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "codacy-production" }, body: "Coverage summary from Codacy for this PR" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "codacy-production" },
+          body: "Coverage summary from Codacy for this PR",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -344,7 +407,9 @@ describe("processComments", () => {
 
   it("filters sonarcloud meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "sonarcloud[bot]" }, body: "Quality Gate passed" })],
+      reviewComments: [
+        makeReviewComment({ user: { login: "sonarcloud[bot]" }, body: "Quality Gate passed" }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -353,7 +418,9 @@ describe("processComments", () => {
 
   it("filters sonarcloud meta-comments from non-bot login", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "sonarcloud" }, body: "Quality Gate passed" })],
+      reviewComments: [
+        makeReviewComment({ user: { login: "sonarcloud" }, body: "Quality Gate passed" }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -362,7 +429,9 @@ describe("processComments", () => {
 
   it("filters sonarqubecloud meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "sonarqubecloud[bot]" }, body: "Quality Gate failed" })],
+      reviewComments: [
+        makeReviewComment({ user: { login: "sonarqubecloud[bot]" }, body: "Quality Gate failed" }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -371,7 +440,9 @@ describe("processComments", () => {
 
   it("filters sonarqubecloud non-bot meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "sonarqubecloud" }, body: "Quality Gate failed" })],
+      reviewComments: [
+        makeReviewComment({ user: { login: "sonarqubecloud" }, body: "Quality Gate failed" }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -380,7 +451,12 @@ describe("processComments", () => {
 
   it("filters sonarqube-cloud-us meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "sonarqube-cloud-us[bot]" }, body: "Quality Gate passed" })],
+      reviewComments: [
+        makeReviewComment({
+          user: { login: "sonarqube-cloud-us[bot]" },
+          body: "Quality Gate passed",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -389,7 +465,9 @@ describe("processComments", () => {
 
   it("filters sonarqube-cloud-us non-bot meta-comments", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ user: { login: "sonarqube-cloud-us" }, body: "Quality Gate passed" })],
+      reviewComments: [
+        makeReviewComment({ user: { login: "sonarqube-cloud-us" }, body: "Quality Gate passed" }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -446,7 +524,11 @@ describe("processComments", () => {
 
   it("strips Additional Locations details blocks", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ body: "issue\n<details>\n<summary>\nAdditional Locations\n</summary>\nstuff\n</details>\nmore" })],
+      reviewComments: [
+        makeReviewComment({
+          body: "issue\n<details>\n<summary>\nAdditional Locations\n</summary>\nstuff\n</details>\nmore",
+        }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -457,7 +539,9 @@ describe("processComments", () => {
 
   it("strips cursor.com p blocks", () => {
     const result = processComments({
-      reviewComments: [makeReviewComment({ body: 'text<p>\n<a href="https://cursor.com/link">link</a>\n</p>end' })],
+      reviewComments: [
+        makeReviewComment({ body: 'text<p>\n<a href="https://cursor.com/link">link</a>\n</p>end' }),
+      ],
       issueComments: [],
       reviews: [],
     });
@@ -502,7 +586,21 @@ describe("processComments", () => {
   });
 
   it("detects known bot logins", () => {
-    for (const login of ["cursor", "vercel", "supabase", "github-actions", "Copilot", "coderabbitai", "sourcery-ai", "codacy-production", "sonarcloud", "sonarqubecloud", "sonarqube-cloud-us", "chatgpt-codex-connector", "copilot-pull-request-reviewer"]) {
+    for (const login of [
+      "cursor",
+      "vercel",
+      "supabase",
+      "github-actions",
+      "Copilot",
+      "coderabbitai",
+      "sourcery-ai",
+      "codacy-production",
+      "sonarcloud",
+      "sonarqubecloud",
+      "sonarqube-cloud-us",
+      "chatgpt-codex-connector",
+      "copilot-pull-request-reviewer",
+    ]) {
       const result = processComments({
         reviewComments: [makeReviewComment({ user: { login } })],
         issueComments: [],
@@ -550,7 +648,7 @@ describe("filterComments", () => {
     { id: 2, isBot: false, isResolved: true, hasHumanReply: true, hasAnyReply: true },
     { id: 3, isBot: false, isResolved: false, hasHumanReply: false, hasAnyReply: true },
     { id: 4, isBot: false, isResolved: false, hasHumanReply: false, hasAnyReply: false },
-  ] as any;
+  ] as unknown as ProcessedComment[];
 
   it("returns all with no filters", () => {
     expect(filterComments(comments, {})).toHaveLength(4);
@@ -558,27 +656,27 @@ describe("filterComments", () => {
 
   it("filters botsOnly", () => {
     const result = filterComments(comments, { botsOnly: true });
-    expect(result.map((c: any) => c.id)).toEqual([1]);
+    expect(result.map((c) => c.id)).toEqual([1]);
   });
 
   it("filters humansOnly", () => {
     const result = filterComments(comments, { humansOnly: true });
-    expect(result.map((c: any) => c.id)).toEqual([2, 3, 4]);
+    expect(result.map((c) => c.id)).toEqual([2, 3, 4]);
   });
 
   it("filters unresolved (not resolved and no human reply)", () => {
     const result = filterComments(comments, { filter: "unresolved" });
-    expect(result.map((c: any) => c.id)).toEqual([1, 3, 4]);
+    expect(result.map((c) => c.id)).toEqual([1, 3, 4]);
   });
 
   it("filters unanswered (no replies at all)", () => {
     const result = filterComments(comments, { filter: "unanswered" });
-    expect(result.map((c: any) => c.id)).toEqual([1, 4]);
+    expect(result.map((c) => c.id)).toEqual([1, 4]);
   });
 
   it("combines botsOnly + unresolved", () => {
     const result = filterComments(comments, { botsOnly: true, filter: "unresolved" });
-    expect(result.map((c: any) => c.id)).toEqual([1]);
+    expect(result.map((c) => c.id)).toEqual([1]);
   });
 
   it("handles null filter", () => {
@@ -612,9 +710,7 @@ describe("fetchPRComments", () => {
 
 describe("replyToComment", () => {
   it("uses review comment reply endpoint when ok", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 201, data: { html_url: "https://url" } },
-    ]);
+    const pf = mockProxyFetch([{ ok: true, status: 201, data: { html_url: "https://url" } }]);
     const result = await replyToComment("o", "r", 1, 123, "msg", "tok", pf);
     expect(result.html_url).toBe("https://url");
   });
@@ -633,7 +729,9 @@ describe("replyToComment", () => {
       { ok: false, status: 404, data: {} },
       { ok: false, status: 500, data: "server error" },
     ]);
-    await expect(replyToComment("o", "r", 1, 123, "msg", "tok", pf)).rejects.toThrow("Failed to reply: 500");
+    await expect(replyToComment("o", "r", 1, 123, "msg", "tok", pf)).rejects.toThrow(
+      "Failed to reply: 500",
+    );
   });
 });
 
@@ -645,8 +743,16 @@ describe("resolveThread", () => {
   it("returns skipped when thread not found", async () => {
     const pf = mockProxyFetch([
       {
-        ok: true, status: 200, data: {
-          data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } } },
+        ok: true,
+        status: 200,
+        data: {
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
+              },
+            },
+          },
         },
       },
     ]);
@@ -657,8 +763,21 @@ describe("resolveThread", () => {
   it("returns alreadyResolved when thread is resolved", async () => {
     const pf = mockProxyFetch([
       {
-        ok: true, status: 200, data: {
-          data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [{ id: "T1", isResolved: true, comments: { nodes: [{ databaseId: 123 }] } }] } } } },
+        ok: true,
+        status: 200,
+        data: {
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: [
+                    { id: "T1", isResolved: true, comments: { nodes: [{ databaseId: 123 }] } },
+                  ],
+                },
+              },
+            },
+          },
         },
       },
     ]);
@@ -669,12 +788,27 @@ describe("resolveThread", () => {
   it("resolves thread via mutation", async () => {
     const pf = mockProxyFetch([
       {
-        ok: true, status: 200, data: {
-          data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [{ id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } }] } } } },
+        ok: true,
+        status: 200,
+        data: {
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: [
+                    { id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } },
+                  ],
+                },
+              },
+            },
+          },
         },
       },
       {
-        ok: true, status: 200, data: { data: { resolveReviewThread: { thread: { id: "T1", isResolved: true } } } },
+        ok: true,
+        status: 200,
+        data: { data: { resolveReviewThread: { thread: { id: "T1", isResolved: true } } } },
       },
     ]);
     const result = await resolveThread("o", "r", 1, 123, "tok", pf);
@@ -684,17 +818,45 @@ describe("resolveThread", () => {
   it("paginates to find thread", async () => {
     const pf = mockProxyFetch([
       {
-        ok: true, status: 200, data: {
-          data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: true, endCursor: "c1" }, nodes: [{ id: "T0", isResolved: false, comments: { nodes: [{ databaseId: 999 }] } }] } } } },
+        ok: true,
+        status: 200,
+        data: {
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  pageInfo: { hasNextPage: true, endCursor: "c1" },
+                  nodes: [
+                    { id: "T0", isResolved: false, comments: { nodes: [{ databaseId: 999 }] } },
+                  ],
+                },
+              },
+            },
+          },
         },
       },
       {
-        ok: true, status: 200, data: {
-          data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [{ id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } }] } } } },
+        ok: true,
+        status: 200,
+        data: {
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: [
+                    { id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } },
+                  ],
+                },
+              },
+            },
+          },
         },
       },
       {
-        ok: true, status: 200, data: { data: { resolveReviewThread: { thread: { id: "T1", isResolved: true } } } },
+        ok: true,
+        status: 200,
+        data: { data: { resolveReviewThread: { thread: { id: "T1", isResolved: true } } } },
       },
     ]);
     const result = await resolveThread("o", "r", 1, 123, "tok", pf);
@@ -704,43 +866,81 @@ describe("resolveThread", () => {
 
   it("throws on GraphQL query failure", async () => {
     const pf = mockProxyFetch([{ ok: false, status: 401, data: {} }]);
-    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow("GraphQL query failed: 401");
+    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow(
+      "GraphQL query failed: 401",
+    );
   });
 
   it("throws on GraphQL errors in query response", async () => {
     const pf = mockProxyFetch([
       { ok: true, status: 200, data: { errors: [{ message: "bad query" }] } },
     ]);
-    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow("GraphQL error: bad query");
+    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow(
+      "GraphQL error: bad query",
+    );
   });
 
   it("throws on mutation failure", async () => {
     const pf = mockProxyFetch([
       {
-        ok: true, status: 200, data: {
-          data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [{ id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } }] } } } },
+        ok: true,
+        status: 200,
+        data: {
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: [
+                    { id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } },
+                  ],
+                },
+              },
+            },
+          },
         },
       },
       { ok: false, status: 500, data: {} },
     ]);
-    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow("Failed to resolve thread: 500");
+    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow(
+      "Failed to resolve thread: 500",
+    );
   });
 
   it("throws on mutation GraphQL errors", async () => {
     const pf = mockProxyFetch([
       {
-        ok: true, status: 200, data: {
-          data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [{ id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } }] } } } },
+        ok: true,
+        status: 200,
+        data: {
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: [
+                    { id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } },
+                  ],
+                },
+              },
+            },
+          },
         },
       },
       { ok: true, status: 200, data: { errors: [{ message: "mutation failed" }] } },
     ]);
-    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow("GraphQL error: mutation failed");
+    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow(
+      "GraphQL error: mutation failed",
+    );
   });
 
   it("returns skipped when reviewThreads is null", async () => {
     const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { data: { repository: { pullRequest: { reviewThreads: null } } } } },
+      {
+        ok: true,
+        status: 200,
+        data: { data: { repository: { pullRequest: { reviewThreads: null } } } },
+      },
     ]);
     const result = await resolveThread("o", "r", 1, 123, "tok", pf);
     expect(result).toEqual({ skipped: true, reason: "not a review comment thread" });

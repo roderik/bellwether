@@ -14,6 +14,7 @@ import {
   filterComments,
   replyToComment,
   resolveThread,
+  type ProcessedComment,
 } from "../../src/github/index.js";
 import {
   getReviewsList,
@@ -50,7 +51,7 @@ const comment = {
 const ctx = { token: "tok", repoInfo: { owner: "o", repo: "r" }, proxyFetch: vi.fn() };
 const filterOpts = { unresolved: false, unanswered: false, botsOnly: false, humansOnly: false };
 
-function setupMocks(comments: any[] = [comment]) {
+function setupMocks(comments: ProcessedComment[] = [comment]) {
   mockFetchComments.mockResolvedValue({ reviewComments: [], issueComments: [], reviews: [] });
   mockProcess.mockReturnValue(comments);
   mockFilter.mockReturnValue(comments);

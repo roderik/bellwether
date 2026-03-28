@@ -124,7 +124,7 @@ describe("getCurrentBranch", () => {
 // ---------------------------------------------------------------------------
 
 describe("findPRForBranch", () => {
-  function mockFetch(data: any, ok = true, status = 200) {
+  function mockFetch(data: unknown, ok = true, status = 200) {
     return vi.fn(async () => ({
       ok,
       status,

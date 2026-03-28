@@ -9,6 +9,25 @@ import {
   commentSchema,
 } from "./reviews.js";
 
+interface CheckCommandContext {
+  var: { ctx: Context };
+  args: { pr?: number };
+  options: {
+    watch: boolean;
+    interval: number;
+    timeout: number;
+    unresolved: boolean;
+    unanswered: boolean;
+    botsOnly: boolean;
+    humansOnly: boolean;
+    reply?: string;
+    resolve: boolean;
+    detail?: number;
+  };
+  ok: (data: Record<string, unknown>, meta?: Record<string, unknown>) => unknown;
+  error: (data: { message: string }) => unknown;
+}
+
 export const checkCommand = {
   description: "Show CI status and review comments for a PR",
   hint: "Combines CI checks and review comments. Use --reply and --detail for review actions. With --watch, polls until CI completes.",
@@ -65,7 +84,7 @@ export const checkCommand = {
     { options: { reply: "456:Fixed in latest commit" }, description: "Reply to comment" },
     { options: { reply: "456:Done", resolve: true }, description: "Reply and resolve" },
   ],
-  async run(c: any) {
+  async run(c: CheckCommandContext) {
     const ctx: Context = c.var.ctx;
     const { prNumber, headSha } = await resolvePR(ctx, c.args.pr);
     const opts = c.options;

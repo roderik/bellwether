@@ -65,7 +65,14 @@ describe("getGitHubToken", () => {
   it("skips .env.local when file does not exist", async () => {
     mockGetRepoRoot.mockReturnValue("/repo");
     mockAccess.mockRejectedValue(new Error("ENOENT"));
-    mockSpawnSync.mockReturnValue({ stdout: "cli-token", status: 0, stderr: "", pid: 1, output: [], signal: null } as any);
+    mockSpawnSync.mockReturnValue({
+      stdout: "cli-token",
+      status: 0,
+      stderr: "",
+      pid: 1,
+      output: [],
+      signal: null,
+    } as any);
     expect(await getGitHubToken()).toBe("cli-token");
   });
 
@@ -73,23 +80,51 @@ describe("getGitHubToken", () => {
     mockGetRepoRoot.mockReturnValue("/repo");
     mockAccess.mockResolvedValue(undefined);
     mockReadFile.mockResolvedValue("OTHER_VAR=value\n" as any);
-    mockSpawnSync.mockReturnValue({ stdout: "cli-token", status: 0, stderr: "", pid: 1, output: [], signal: null } as any);
+    mockSpawnSync.mockReturnValue({
+      stdout: "cli-token",
+      status: 0,
+      stderr: "",
+      pid: 1,
+      output: [],
+      signal: null,
+    } as any);
     expect(await getGitHubToken()).toBe("cli-token");
   });
 
   it("falls back to gh auth token CLI", async () => {
-    mockSpawnSync.mockReturnValue({ stdout: "cli-token", status: 0, stderr: "", pid: 1, output: [], signal: null } as any);
+    mockSpawnSync.mockReturnValue({
+      stdout: "cli-token",
+      status: 0,
+      stderr: "",
+      pid: 1,
+      output: [],
+      signal: null,
+    } as any);
     expect(await getGitHubToken()).toBe("cli-token");
   });
 
   it("returns null when gh CLI fails", async () => {
-    mockSpawnSync.mockReturnValue({ stdout: "", status: 1, stderr: "error", pid: 1, output: [], signal: null } as any);
+    mockSpawnSync.mockReturnValue({
+      stdout: "",
+      status: 1,
+      stderr: "error",
+      pid: 1,
+      output: [],
+      signal: null,
+    } as any);
     expect(await getGitHubToken()).toBeNull();
   });
 
   it("returns null when no repo root and CLI fails", async () => {
     mockGetRepoRoot.mockReturnValue(null);
-    mockSpawnSync.mockReturnValue({ stdout: "", status: 1, stderr: "", pid: 1, output: [], signal: null } as any);
+    mockSpawnSync.mockReturnValue({
+      stdout: "",
+      status: 1,
+      stderr: "",
+      pid: 1,
+      output: [],
+      signal: null,
+    } as any);
     expect(await getGitHubToken()).toBeNull();
   });
 });

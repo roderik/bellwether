@@ -11,6 +11,14 @@ export interface FailingCheck {
   log: string;
 }
 
+interface RawCheckRun {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+}
+
 export interface CIStatus {
   sha: string;
   total: number;
@@ -123,8 +131,8 @@ export async function fetchCIStatus(
     if (!prResponse.ok) {
       throw new Error(`Failed to fetch PR: ${prResponse.status}`);
     }
-    const pr = await prResponse.json();
-    sha = pr.head.sha as string;
+    const pr = (await prResponse.json()) as { head: { sha: string } };
+    sha = pr.head.sha;
   }
 
   // Fetch check runs for that SHA
@@ -136,20 +144,18 @@ export async function fetchCIStatus(
   if (!checksResponse.ok) {
     throw new Error(`Failed to fetch checks: ${checksResponse.status}`);
   }
-  const checksData = await checksResponse.json();
-  const rawChecks = checksData.check_runs as any[];
+  const checksData = (await checksResponse.json()) as { check_runs: RawCheckRun[] };
+  const rawChecks = checksData.check_runs;
 
-  const isPassing = (c: any) =>
+  const isPassing = (c: RawCheckRun) =>
     c.conclusion === "success" || c.conclusion === "skipped" || c.conclusion === "neutral";
-  const isFailing = (c: any) =>
+  const isFailing = (c: RawCheckRun) =>
     c.conclusion === "failure" ||
     c.conclusion === "timed_out" ||
     c.conclusion === "action_required";
 
-  const passed = rawChecks.filter(isPassing).map((c) => c.name as string);
-  const in_progress = rawChecks
-    .filter((c) => c.status !== "completed")
-    .map((c) => c.name as string);
+  const passed = rawChecks.filter(isPassing).map((c) => c.name);
+  const in_progress = rawChecks.filter((c) => c.status !== "completed").map((c) => c.name);
   const failingChecks = rawChecks.filter(isFailing);
 
   // Fetch job logs for failing checks in parallel
@@ -160,9 +166,9 @@ export async function fetchCIStatus(
         ? await fetchJobLog(owner, repo, jobId, token, proxyFetch)
         : "[could not parse job ID from URL]";
       return {
-        name: c.name as string,
-        conclusion: c.conclusion as string,
-        html_url: c.html_url as string,
+        name: c.name,
+        conclusion: c.conclusion ?? "unknown",
+        html_url: c.html_url,
         log,
       };
     }),

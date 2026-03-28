@@ -122,9 +122,9 @@ export async function postReply(
         proxyFetch,
       );
       resolved = "resolved" in res && res.resolved;
-    } catch (error: any) {
+    } catch (error: unknown) {
       resolved = false;
-      resolveError = error?.message ?? "Failed to resolve thread";
+      resolveError = error instanceof Error ? error.message : "Failed to resolve thread";
     }
   }
 

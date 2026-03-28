@@ -33,7 +33,7 @@ const mockGetDetail = vi.mocked(getReviewDetail);
 const mockPostReply = vi.mocked(postReply);
 const mockFormatReviews = vi.mocked(formatReviewsSection);
 
-function makeCtx(optOverrides: Record<string, any> = {}) {
+function makeCtx(optOverrides: Record<string, unknown> = {}) {
   return {
     var: { ctx: { token: "tok", repoInfo: { owner: "o", repo: "r" }, proxyFetch: vi.fn() } },
     args: { pr: undefined as number | undefined },
@@ -50,8 +50,8 @@ function makeCtx(optOverrides: Record<string, any> = {}) {
       detail: undefined as number | undefined,
       ...optOverrides,
     },
-    ok: vi.fn((data: any, _meta?: any) => data),
-    error: vi.fn((err: any) => err),
+    ok: vi.fn((data: Record<string, unknown>, _meta?: Record<string, unknown>) => data),
+    error: vi.fn((err: Record<string, unknown>) => err),
   };
 }
 
@@ -86,7 +86,7 @@ describe("checkCommand.run", () => {
     mockFormatReviews.mockReturnValue(reviewsFlat);
 
     await checkCommand.run(c);
-    const data = c.ok.mock.calls[0][0];
+    const data = c.ok.mock.calls[0][0] as any;
     expect(data.ci).toBeDefined();
     expect(data.reviews).toBeDefined();
     expect(data.ci.sha).toBe("abc");
@@ -101,7 +101,7 @@ describe("checkCommand.run", () => {
     mockFormatReviews.mockReturnValue(reviewsFlat);
 
     await checkCommand.run(c);
-    const meta = c.ok.mock.calls[0][1];
+    const meta = c.ok.mock.calls[0][1] as any;
     expect(meta.cta.description).toContain("still running");
     expect(meta.cta.commands[0].command).toBe("check --watch");
   });
@@ -122,7 +122,7 @@ describe("checkCommand.run", () => {
     mockFormatReviews.mockReturnValue(reviewsFlat);
 
     await checkCommand.run(c);
-    const meta = c.ok.mock.calls[0][1];
+    const meta = c.ok.mock.calls[0][1] as any;
     expect(meta.cta.description).toContain("failing");
   });
 
@@ -137,7 +137,7 @@ describe("checkCommand.run", () => {
     mockFormatReviews.mockReturnValue(reviewsFlat);
 
     await checkCommand.run(c);
-    const meta = c.ok.mock.calls[0][1];
+    const meta = c.ok.mock.calls[0][1] as any;
     expect(meta.cta).toBeUndefined();
   });
 
@@ -165,7 +165,7 @@ describe("checkCommand.run", () => {
     mockGetDetail.mockResolvedValue({ id: 456, body: "fix this" } as any);
 
     await checkCommand.run(c);
-    const data = c.ok.mock.calls[0][0];
+    const data = c.ok.mock.calls[0][0] as any;
     expect(data.comment.id).toBe(456);
   });
 
@@ -189,7 +189,7 @@ describe("checkCommand.run", () => {
     mockGetReviews.mockResolvedValue(reviewsResult);
     mockFormatReviews.mockReturnValue(reviewsFlat);
 
-    const result = await checkCommand.run(c);
+    const result = (await checkCommand.run(c)) as any;
     expect(result.ci.allPassing).toBe(true);
   });
 
@@ -209,9 +209,9 @@ describe("checkCommand.run", () => {
     mockFormatReviews.mockReturnValue(reviewsFlat);
 
     await checkCommand.run(c);
-    const data = c.ok.mock.calls[0][0];
+    const data = c.ok.mock.calls[0][0] as any;
     expect(data.ci.allPassing).toBe(false);
-    const meta = c.ok.mock.calls[0][1];
+    const meta = c.ok.mock.calls[0][1] as any;
     expect(meta.cta.description).toContain("Failed");
   });
 
@@ -219,18 +219,16 @@ describe("checkCommand.run", () => {
     vi.useFakeTimers();
     const c = makeCtx({ watch: true, interval: 1 });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
-    mockGetCI
-      .mockResolvedValueOnce(ciResult as any)
-      .mockResolvedValueOnce({
-        status: { ...ciResult.status, pending: 0, failing: 0 },
-        flat: ciResult.flat,
-      } as any);
+    mockGetCI.mockResolvedValueOnce(ciResult as any).mockResolvedValueOnce({
+      status: { ...ciResult.status, pending: 0, failing: 0 },
+      flat: ciResult.flat,
+    } as any);
     mockGetReviews.mockResolvedValue(reviewsResult);
     mockFormatReviews.mockReturnValue(reviewsFlat);
 
     const promise = checkCommand.run(c);
     await vi.advanceTimersByTimeAsync(1100);
-    const result = await promise;
+    const result = (await promise) as any;
 
     expect(result.ci.allPassing).toBe(true);
     vi.useRealTimers();
@@ -244,9 +242,9 @@ describe("checkCommand.run", () => {
     mockFormatReviews.mockReturnValue(reviewsFlat);
 
     await checkCommand.run(c);
-    const data = c.ok.mock.calls[0][0];
+    const data = c.ok.mock.calls[0][0] as any;
     expect(data.ci.timedOut).toBe(true);
-    const meta = c.ok.mock.calls[0][1];
+    const meta = c.ok.mock.calls[0][1] as any;
     expect(meta.cta.description).toContain("Timed out");
   });
 });

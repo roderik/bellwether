@@ -11,7 +11,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 function mockProxyFetch(
-  responses: { ok: boolean; status: number; data: any; headers?: Record<string, string> }[],
+  responses: { ok: boolean; status: number; data: unknown; headers?: Record<string, string> }[],
 ) {
   let callIdx = 0;
   return vi.fn(async () => {
@@ -45,7 +45,7 @@ describe("getProxyFetch", () => {
       json: async () => ({ data: true }),
     };
     const original = globalThis.fetch;
-    globalThis.fetch = vi.fn(async () => mockResponse) as any;
+    globalThis.fetch = vi.fn(async () => mockResponse) as any as typeof globalThis.fetch;
 
     try {
       const pf = getProxyFetch();
@@ -80,8 +80,8 @@ describe("getProxyFetch", () => {
 
 describe("ghFetch", () => {
   it("adds auth headers", async () => {
-    let capturedOptions: any;
-    const pf = vi.fn(async (_url: string, options: any) => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const pf = vi.fn(async (_url: string, options: Record<string, unknown>) => {
       capturedOptions = options;
       return {
         ok: true,
@@ -92,16 +92,17 @@ describe("ghFetch", () => {
       };
     });
 
-    await ghFetch("https://api.github.com/test", "my-token", pf);
+    await ghFetch("https://api.github.com/test", "my-token", pf as any);
 
-    expect(capturedOptions.headers.Authorization).toBe("Bearer my-token");
-    expect(capturedOptions.headers.Accept).toBe("application/vnd.github.v3+json");
-    expect(capturedOptions.headers["User-Agent"]).toBe("bellwether");
+    const headers = capturedOptions!.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer my-token");
+    expect(headers.Accept).toBe("application/vnd.github.v3+json");
+    expect(headers["User-Agent"]).toBe("bellwether");
   });
 
   it("merges custom headers", async () => {
-    let capturedOptions: any;
-    const pf = vi.fn(async (_url: string, options: any) => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const pf = vi.fn(async (_url: string, options: Record<string, unknown>) => {
       capturedOptions = options;
       return {
         ok: true,
@@ -112,14 +113,15 @@ describe("ghFetch", () => {
       };
     });
 
-    await ghFetch("https://api.github.com/test", "tok", pf, {
+    await ghFetch("https://api.github.com/test", "tok", pf as any, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
 
-    expect(capturedOptions.method).toBe("POST");
-    expect(capturedOptions.headers["Content-Type"]).toBe("application/json");
-    expect(capturedOptions.headers.Authorization).toBe("Bearer tok");
+    expect(capturedOptions!.method).toBe("POST");
+    const headers = capturedOptions!.headers as Record<string, string>;
+    expect(headers["Content-Type"]).toBe("application/json");
+    expect(headers.Authorization).toBe("Bearer tok");
   });
 });
 
