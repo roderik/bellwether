@@ -1,0 +1,31 @@
+hooks/hooks.json
+  9d04e801f2e672b7 10,16,22
+src/cli.ts
+  9d04e801f2e672b7 1,6-7,9-11,14,41-43,48-49
+src/commands/hook-check.ts
+  9d04e801f2e672b7 1,5-24,26-30,32-44,46-49
+src/bin.ts
+  9d04e801f2e672b7 3-4
+src/commands/hook-add.ts
+  9d04e801f2e672b7 5,7,118,121-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "f8b5eb45eb89fe38dfc07c6b347ed1d0ebf2e697",
+  "prompts": {
+    "9d04e801f2e672b7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a53315d1-41d0-42b1-961c-e5ee6a845133",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 79,
+      "total_deletions": 73,
+      "accepted_lines": 77,
+      "overriden_lines": 0
+    }
+  }
+}
