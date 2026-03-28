@@ -1,10 +1,17 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Cli, z } from "incur";
 import { bootstrap, type Context } from "./context.js";
 import { checkCommand } from "./commands/check.js";
+import { hookAddCommand } from "./commands/hook-add.js";
+import { hookCheckCommand } from "./commands/hook-check.js";
+
+const pkg = JSON.parse(readFileSync(join(import.meta.dirname, "..", "package.json"), "utf-8")) as {
+  version: string;
+};
 
 const cli = Cli.create("bellwether", {
-  version: "0.0.1",
+  version: pkg.version,
   description: "Monitor GitHub PRs — review comments and CI status",
   vars: z.object({
     ctx: z.custom<Context>(),
@@ -20,7 +27,6 @@ const cli = Cli.create("bellwether", {
   }),
   sync: {
     depth: 0,
-    cwd: join(import.meta.dirname, ".."),
     include: ["_root"],
     suggestions: [
       "check CI and reviews for this PR",
@@ -32,11 +38,15 @@ const cli = Cli.create("bellwether", {
 });
 
 cli.use(async (c, next) => {
-  c.set("ctx", await bootstrap());
+  if (!c.command.startsWith("hook")) {
+    c.set("ctx", await bootstrap());
+  }
   await next();
 });
 
 cli.command("check", checkCommand as unknown as Parameters<typeof cli.command>[1]);
+cli.command("hook-add", hookAddCommand as unknown as Parameters<typeof cli.command>[1]);
+cli.command("hook-check", hookCheckCommand as unknown as Parameters<typeof cli.command>[1]);
 
 export { cli };
 export default cli;

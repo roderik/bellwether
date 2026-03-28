@@ -1,6 +1,6 @@
 {
   "name": "bellwether",
-  "version": "0.0.4",
+  "version": "0.0.1",
   "description": "Drive PRs to merge-ready: watch CI, fix failures, resolve review comments. Self-contained watch loop that keeps going until pr.ready=true.",
   "author": {
     "name": "Roderik van der Veer",
@@ -8,13 +8,6 @@
   },
   "repository": "https://github.com/roderik/bellwether",
   "license": "MIT",
-  "keywords": [
-    "ci",
-    "pr",
-    "review",
-    "merge",
-    "github",
-    "watch"
-  ],
+  "keywords": ["ci", "pr", "review", "merge", "github", "watch"],
   "skills": "./skills/"
 }
