@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/banner.svg" alt="bellwether" width="100%"/>
+  <img src="assets/banner.jpg" alt="bellwether" width="100%"/>
 </div>
 
 <div align="center">
