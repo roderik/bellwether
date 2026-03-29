@@ -38,15 +38,20 @@ const cli = Cli.create("bellwether", {
 });
 
 cli.use(async (c, next) => {
-  if (!c.command.startsWith("hook")) {
+  if (!c.command.startsWith("hooks")) {
     c.set("ctx", await bootstrap());
   }
   await next();
 });
 
+const hooksCli = Cli.create("hooks", {
+  description: "Manage PostToolUse hooks for Claude Code and Codex",
+});
+hooksCli.command("add", hookAddCommand as unknown as Parameters<typeof hooksCli.command>[1]);
+hooksCli.command("check", hookCheckCommand as unknown as Parameters<typeof hooksCli.command>[1]);
+
 cli.command("check", checkCommand as unknown as Parameters<typeof cli.command>[1]);
-cli.command("hook-add", hookAddCommand as unknown as Parameters<typeof cli.command>[1]);
-cli.command("hook-check", hookCheckCommand as unknown as Parameters<typeof cli.command>[1]);
+cli.command(hooksCli as unknown as Cli.Cli & { name: string });
 
 export { cli };
 export default cli;
