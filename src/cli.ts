@@ -51,7 +51,7 @@ hooksCli.command("add", hookAddCommand as unknown as Parameters<typeof hooksCli.
 hooksCli.command("check", hookCheckCommand as unknown as Parameters<typeof hooksCli.command>[1]);
 
 cli.command("check", checkCommand as unknown as Parameters<typeof cli.command>[1]);
-cli.command(hooksCli as unknown as Parameters<typeof cli.command>[0]);
+cli.command(hooksCli as unknown as Cli.Cli & { name: string });
 
 export { cli };
 export default cli;
