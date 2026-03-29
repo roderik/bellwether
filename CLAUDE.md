@@ -12,13 +12,13 @@ bellwether is a CLI tool that monitors GitHub PRs — review comments and CI sta
 - `bun check` — lint with oxlint (type-aware)
 - `bun run format` — format with oxfmt
 - `bun test` — run tests (vitest)
-- `bun test:coverage` — run tests with 100% coverage enforcement
+- `bun test:coverage` — run tests with coverage enforcement
 - `bun run build` — build with zile (tsc wrapper)
 - `bun run dev` — dev mode with zile (symlink-based)
 
 ## Testing
 
-Tests live in `test/` mirroring the `src/` structure. 100% coverage is enforced on lines, functions, branches, and statements. Coverage excludes `src/bin.ts`, `src/cli.ts`, and `src/github/index.ts` (entry points and re-exports).
+Tests live in `test/` mirroring the `src/` structure. Coverage thresholds: **lines 99%, functions 97%, branches 93%, statements 99%**. Coverage excludes `src/bin.ts`, `src/cli.ts`, `src/github/index.ts` (entry points and re-exports), and `src/commands/hook-add.ts`, `src/commands/hook-check.ts` (hook installer/handler with stdin dependencies).
 
 Run a single test file: `bunx vitest run test/path/to/file.test.ts`
 
