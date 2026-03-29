@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { Cli, z } from "incur";
 import { bootstrap, type Context } from "./context.js";
 import { checkCommand } from "./commands/check.js";
+import { syncCommand } from "./commands/sync.js";
 import { hookAddCommand } from "./commands/hook-add.js";
 import { hookCheckCommand } from "./commands/hook-check.js";
 
@@ -33,6 +34,7 @@ const cli = Cli.create("bellwether", {
       "check CI and reviews for PR 123",
       "watch CI until complete",
       "reply to review comment 12345",
+      "sync branch with base and report conflicts",
     ],
   },
 });
@@ -45,6 +47,7 @@ cli.use(async (c, next) => {
 });
 
 cli.command("check", checkCommand as unknown as Parameters<typeof cli.command>[1]);
+cli.command("sync", syncCommand as unknown as Parameters<typeof cli.command>[1]);
 cli.command("hook-add", hookAddCommand as unknown as Parameters<typeof cli.command>[1]);
 cli.command("hook-check", hookCheckCommand as unknown as Parameters<typeof cli.command>[1]);
 

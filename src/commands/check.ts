@@ -232,19 +232,29 @@ export const checkCommand = {
       { pr: prSection, ci: ciFlat, reviews: reviewsFlat },
       {
         cta:
-          status.pending > 0
+          mergeState.mergeableState === "behind"
             ? {
-                description: "Checks still running:",
-                commands: [{ command: "check --watch", description: "Watch until complete" }],
+                description: "Branch is behind base:",
+                commands: [{ command: "sync", description: "Sync with base branch" }],
               }
-            : status.failing > 0
+            : mergeState.mergeableState === "dirty"
               ? {
-                  description: "Checks failing:",
-                  commands: [
-                    { command: "check --unresolved", description: "Show unresolved reviews" },
-                  ],
+                  description: "Branch has merge conflicts:",
+                  commands: [{ command: "sync", description: "Sync and see conflict details" }],
                 }
-              : undefined,
+              : status.pending > 0
+                ? {
+                    description: "Checks still running:",
+                    commands: [{ command: "check --watch", description: "Watch until complete" }],
+                  }
+                : status.failing > 0
+                  ? {
+                      description: "Checks failing:",
+                      commands: [
+                        { command: "check --unresolved", description: "Show unresolved reviews" },
+                      ],
+                    }
+                  : undefined,
       },
     );
   },

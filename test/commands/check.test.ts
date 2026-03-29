@@ -371,4 +371,42 @@ describe("checkCommand.run", () => {
       ready: true,
     });
   });
+
+  it("returns sync CTA when mergeableState is behind", async () => {
+    const c = makeCtx();
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue({
+      state: "open" as const,
+      mergeable: null,
+      mergeableState: "behind",
+    });
+    mockGetCI.mockResolvedValue({
+      status: { ...ciResult.status, pending: 0, failing: 0 },
+      flat: ciResult.flat,
+    } as any);
+    mockGetReviews.mockResolvedValue(reviewsResult);
+    mockFormatReviews.mockReturnValue(reviewsFlat);
+
+    await checkCommand.run(c);
+    const meta = c.ok.mock.calls[0][1] as any;
+    expect(meta.cta.description).toContain("behind");
+    expect(meta.cta.commands[0].command).toBe("sync");
+  });
+
+  it("returns sync CTA when mergeableState is dirty", async () => {
+    const c = makeCtx();
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateDirty);
+    mockGetCI.mockResolvedValue({
+      status: { ...ciResult.status, pending: 0, failing: 0 },
+      flat: ciResult.flat,
+    } as any);
+    mockGetReviews.mockResolvedValue(reviewsResult);
+    mockFormatReviews.mockReturnValue(reviewsFlat);
+
+    await checkCommand.run(c);
+    const meta = c.ok.mock.calls[0][1] as any;
+    expect(meta.cta.description).toContain("conflicts");
+    expect(meta.cta.commands[0].command).toBe("sync");
+  });
 });

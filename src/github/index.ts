@@ -33,3 +33,12 @@ export {
 } from "./comments.js";
 
 export { type FailingCheck, type CIStatus, fetchCIStatus } from "./checks.js";
+
+export {
+  type PRBaseInfo,
+  type SyncResult,
+  type ConflictReport,
+  fetchPRBase,
+  syncBranchWithBase,
+  parseConflicts,
+} from "./sync.js";
