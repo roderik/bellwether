@@ -1,0 +1,26 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="256" height="256" rx="52" fill="#0d1117"/>
+  <rect width="256" height="256" rx="52" fill="url(#gradient_bg)"/>
+
+  <!-- Bell body -->
+  <path d="M128 44C128 44 128 44 128 44" stroke="none"/>
+  <!-- Bell cap -->
+  <ellipse cx="128" cy="60" rx="16" ry="8" fill="#3fb950"/>
+  <!-- Bell body shape -->
+  <path d="M112 68 C86 80 72 104 72 132 L72 156 L58 168 L58 176 L198 176 L198 168 L184 156 L184 132 C184 104 170 80 144 68 Z" fill="#3fb950"/>
+  <!-- Bell clapper mount -->
+  <rect x="116" y="176" width="24" height="10" rx="5" fill="#3fb950"/>
+  <!-- Bell clapper ball -->
+  <circle cx="128" cy="196" r="12" fill="#3fb950"/>
+
+  <!-- Checkmark on bell -->
+  <path d="M106 120 L120 138 L152 104" stroke="#0d1117" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <defs>
+    <linearGradient id="gradient_bg" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#161b22"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+  </defs>
+</svg>

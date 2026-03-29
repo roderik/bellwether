@@ -1,31 +1,52 @@
-# bellwether
+<div align="center">
+  <img src="assets/banner.svg" alt="bellwether" width="100%"/>
+</div>
 
-Drive GitHub PRs to merge-ready: watch CI, fix failures, resolve review comments. Self-contained watch loop that keeps going until `pr.ready=true`.
+<div align="center">
 
-Built with [incur](https://github.com/wevm/incur). Inspired by [RTK](https://github.com/rtk-ai/rtk) (token-efficient CLI output filtering) and [agent-reviews](https://github.com/pbakaus/agent-reviews) (automated PR review resolution).
+[![npm version](https://img.shields.io/npm/v/bellwether?color=3fb950&labelColor=161b22&style=flat-square)](https://www.npmjs.com/package/bellwether)
+[![npm downloads](https://img.shields.io/npm/dm/bellwether?color=3fb950&labelColor=161b22&style=flat-square)](https://www.npmjs.com/package/bellwether)
+[![License: MIT](https://img.shields.io/badge/License-MIT-3fb950?labelColor=161b22&style=flat-square)](LICENSE)
+[![Node.js >= 22](https://img.shields.io/badge/node-%3E%3D22-3fb950?labelColor=161b22&style=flat-square)](https://nodejs.org)
+
+</div>
+
+---
+
+**bellwether** watches your GitHub PR's CI, surfaces failures with actual error output, addresses review comments, and loops until `pr.ready = true`. One command. No babysitting.
+
+## Why
+
+Every developer knows the drill: push → wait for CI → check the status page → scroll through logs → fix → push → repeat. With AI coding agents in the picture it gets worse — every "wait and check" cycle is a context switch that breaks flow and burns tokens on polling.
+
+bellwether closes that loop. It watches CI directly from your terminal (or your agent's context), returns the actual error output (not GitHub API noise), and keeps going until the PR is clean.
 
 ## Install
 
 ```bash
-npx -y bellwether@latest skills add 
+# As a Claude Code skill (recommended for AI agents)
+npx -y bellwether@latest skills add
+
+# Or run it directly — no install needed
+npx -y bellwether@latest check
 ```
 
 ## Usage
 
 ```bash
-# CI status + review comments + merge state
-npx -y bellwether@latest check
-
-# Watch until CI completes
+# Watch CI + review comments + merge state
 npx -y bellwether@latest check --watch
 
-# Show only unresolved reviews
+# One-shot status check
+npx -y bellwether@latest check
+
+# Show only unresolved review comments
 npx -y bellwether@latest check --unresolved
 
-# Reply to a review comment and resolve
+# Reply to a review comment and resolve it
 npx -y bellwether@latest check --reply "456:Fixed in abc1234" --resolve
 
-# Full detail for a specific comment
+# Full detail on a specific comment
 npx -y bellwether@latest check --detail 456
 
 # Full help
@@ -33,6 +54,8 @@ npx -y bellwether@latest check --help
 ```
 
 ## Output
+
+Clean, structured, token-efficient:
 
 ```
 pr:
@@ -47,30 +70,47 @@ reviews:
   total: "0 unresolved, 0 unanswered"
 ```
 
-When CI fails, the output includes the actual error log (filtered, not raw GitHub metadata):
+When CI fails, you get the actual error log — filtered, not raw GitHub metadata:
 
 ```
 ci:
-  FAIL check: "TypeError: Cannot find name 'fetch'..."
+  FAIL build: "TypeError: Cannot find name 'fetch' at src/client.ts:12"
 ```
+
+## How it works
+
+bellwether is built around a watch loop:
+
+```
+check --watch
+  → pr.ready = true?   → done ✓
+  → CI failing?        → show filtered error logs → fix → push → repeat
+  → Unresolved review? → show comment with context → address → reply → repeat
+  → Merge conflict?    → sync branch → push → repeat
+```
+
+It queries GitHub's Check Runs API directly, filters job logs down to signal (compiler errors, test failures — not noise), and surfaces review threads with file and line context. `--watch` blocks until CI completes — no polling required.
+
+## Agent usage
+
+bellwether ships as a Claude Code skill. Once installed, your agent gets a `SKILL.md` covering the full loop: watch CI → fix failures → address reviews → push → repeat until `pr.ready = true`.
+
+```bash
+npx -y bellwether@latest skills add
+```
+
+The skill is also available on the [Claude Code marketplace](https://github.com/roderik/bellwether/blob/main/marketplace.json).
 
 ## Development
 
-### Prerequisites
-
-- [Bun](https://bun.sh) (package manager and dev runtime)
-- Node.js >= 22 (the published package runs on Node)
-
-### Setup
+**Prerequisites:** [Bun](https://bun.sh) + Node.js >= 22
 
 ```bash
 bun install
 ```
 
-### Commands
-
 ```bash
-bun run dev              # zile dev — symlinks dist/ to src/
+bun run dev              # dev mode — symlinks dist/ to src/
 bun src/bin.ts check     # run directly from source
 bun run build            # compile to dist/
 bun check                # oxlint with type-aware rules
@@ -79,16 +119,11 @@ bun run test:coverage    # vitest with v8 coverage
 bun run format           # oxfmt
 ```
 
-### Publishing
-
-Automated via GitHub Actions on tag push:
+**Publishing:** Push a version tag — GitHub Actions handles the rest (version bump, npm publish with provenance, commit back to main).
 
 ```bash
-git tag v0.1.0
-git push --tags
+git tag v0.1.0 && git push --tags
 ```
-
-The workflow sets the version in `package.json` and `.claude-plugin/plugin.json`, builds, publishes to npm with provenance, and commits the version bump back to main.
 
 ## Project structure
 
@@ -98,9 +133,9 @@ src/
   cli.ts              # incur CLI definition
   context.ts          # Bootstrap + PR resolution
   commands/
-    check.ts          # unified check command (CI + reviews + merge state)
+    check.ts          # check command (CI + reviews + merge state)
     ci.ts             # CI data helpers (flatten, getCISection)
-    reviews.ts        # Review data helpers (list, detail, reply, watch)
+    reviews.ts        # Review helpers (list, detail, reply, watch)
   github/
     auth.ts           # GitHub token resolution
     fetch.ts          # Proxy-aware fetch + pagination
@@ -114,6 +149,10 @@ skills/
 .claude-plugin/
   plugin.json         # Claude Code plugin manifest
 ```
+
+## Credits
+
+Built with [incur](https://github.com/wevm/incur). Inspired by [RTK](https://github.com/rtk-ai/rtk) (token-efficient CLI output filtering) and [agent-reviews](https://github.com/pbakaus/agent-reviews) (automated PR review resolution).
 
 ## License
 
