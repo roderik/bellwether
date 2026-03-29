@@ -27,6 +27,24 @@ function buildPRSection(
   };
 }
 
+function buildSyncCTA(
+  mergeableState: string,
+): { description: string; commands: { command: string; description: string }[] } | undefined {
+  if (mergeableState === "dirty") {
+    return {
+      description: "PR has merge conflicts:",
+      commands: [{ command: "sync", description: "Show conflict details" }],
+    };
+  }
+  if (mergeableState === "behind") {
+    return {
+      description: "PR is behind base branch:",
+      commands: [{ command: "sync", description: "Sync with base branch" }],
+    };
+  }
+  return undefined;
+}
+
 interface CheckCommandContext {
   var: { ctx: Context };
   args: { pr?: number };
@@ -164,6 +182,12 @@ export const checkCommand = {
         ).length;
         const prSection = buildPRSection(mergeState, status, unresolvedCount);
 
+        // Exit early if PR needs syncing — CI results are irrelevant until resolved
+        const syncCTA = buildSyncCTA(mergeState.mergeableState);
+        if (syncCTA) {
+          return c.ok({ pr: prSection, ci: ciFlat, reviews: reviewsFlat }, { cta: syncCTA });
+        }
+
         if (status.failing === 0 && status.pending === 0) {
           return c.ok({
             pr: prSection,
@@ -228,11 +252,13 @@ export const checkCommand = {
     ).length;
     const prSection = buildPRSection(mergeState, status, unresolvedCount);
 
+    const defaultSyncCTA = buildSyncCTA(mergeState.mergeableState);
     return c.ok(
       { pr: prSection, ci: ciFlat, reviews: reviewsFlat },
       {
         cta:
-          status.pending > 0
+          defaultSyncCTA ??
+          (status.pending > 0
             ? {
                 description: "Checks still running:",
                 commands: [{ command: "check --watch", description: "Watch until complete" }],
@@ -244,7 +270,7 @@ export const checkCommand = {
                     { command: "check --unresolved", description: "Show unresolved reviews" },
                   ],
                 }
-              : undefined,
+              : undefined),
       },
     );
   },
