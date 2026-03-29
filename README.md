@@ -31,6 +31,20 @@ npx -y bellwether@latest skills add
 npx -y bellwether@latest check
 ```
 
+## Hooks
+
+Bellwether can install PostToolUse hooks into Claude Code (`~/.claude/settings.json`) and Codex (`~/.codex/hooks.json`). After a `git push` or `gh pr create/ready`, the hook runs a quick PR status check and reminds the agent to monitor CI.
+
+```bash
+# Install hooks into Claude Code and Codex
+npx -y bellwether@latest hooks add
+
+# PostToolUse hook handler (called automatically by Claude Code / Codex)
+npx -y bellwether@latest hooks check --format json
+```
+
+`hooks add` is idempotent — re-running it replaces any existing bellwether hook entries with the latest configuration.
+
 ## Usage
 
 ```bash
@@ -135,6 +149,8 @@ src/
   commands/
     check.ts          # check command (CI + reviews + merge state)
     ci.ts             # CI data helpers (flatten, getCISection)
+    hook-add.ts       # hooks add — installs PostToolUse hooks
+    hook-check.ts     # hooks check — PostToolUse hook handler
     reviews.ts        # Review helpers (list, detail, reply, watch)
   github/
     auth.ts           # GitHub token resolution
