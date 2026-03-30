@@ -10,7 +10,7 @@ import {
 interface RawPRData {
   base: { ref: string };
   head: { sha: string };
-  mergeable_state: string;
+  mergeable_state: string | null;
 }
 
 interface SyncCommandContext {
@@ -63,7 +63,7 @@ export const syncCommand = {
   ],
   async run(c: SyncCommandContext) {
     const ctx: Context = c.var.ctx;
-    const { prNumber, headSha } = await resolvePR(ctx, c.args.pr);
+    const { prNumber } = await resolvePR(ctx, c.args.pr);
 
     const prResponse = await ghFetch(
       `https://api.github.com/repos/${ctx.repoInfo.owner}/${ctx.repoInfo.repo}/pulls/${prNumber}`,
@@ -108,7 +108,7 @@ export const syncCommand = {
     }
 
     // Attempt server-side update (handles "behind" and other states)
-    const expectedHeadSha = prData.head.sha ?? headSha;
+    const expectedHeadSha = prData.head.sha;
     const result = await updatePRBranch(
       ctx.repoInfo.owner,
       ctx.repoInfo.repo,
