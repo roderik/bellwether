@@ -70,6 +70,9 @@ const DEFAULT_META_FILTERS: MetaFilter[] = [
       user === "sonarqube-cloud-us[bot]" ||
       user === "sonarqube-cloud-us") &&
     body.includes("Quality Gate"),
+  (user, body) =>
+    (user === "pkg-pr-new[bot]" || user === "pkg-pr-new") &&
+    body.includes("pkg.pr.new"),
 ];
 
 function isMetaComment(user: string, body: string): boolean {
@@ -97,6 +100,7 @@ const KNOWN_BOT_LOGINS = new Set([
   "sonarcloud",
   "sonarqubecloud",
   "sonarqube-cloud-us",
+  "pkg-pr-new",
 ]);
 
 function isBot(username: string | undefined): boolean {

@@ -6,6 +6,7 @@ import {
   findPRForBranch,
   listOpenPRs,
   fetchPRMergeState,
+  updatePRBranch,
 } from "../../src/github/repo.js";
 
 vi.mock("node:child_process", () => ({
@@ -213,12 +214,16 @@ describe("fetchPRMergeState", () => {
       merged: false,
       mergeable: true,
       mergeable_state: "clean",
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result).toEqual({
       state: "open",
       mergeable: true,
       mergeableState: "clean",
+      headSha: "abc123",
+      baseBranch: "main",
     });
   });
 
@@ -228,6 +233,8 @@ describe("fetchPRMergeState", () => {
       merged: true,
       mergeable: false,
       mergeable_state: "unknown",
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result.state).toBe("merged");
@@ -239,6 +246,8 @@ describe("fetchPRMergeState", () => {
       merged: false,
       mergeable: null,
       mergeable_state: "unknown",
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result.state).toBe("closed");
@@ -250,6 +259,8 @@ describe("fetchPRMergeState", () => {
       merged: false,
       mergeable: null,
       mergeable_state: "unknown",
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result.mergeable).toBeNull();
@@ -262,6 +273,8 @@ describe("fetchPRMergeState", () => {
       merged: false,
       mergeable: false,
       mergeable_state: "dirty",
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result.mergeableState).toBe("dirty");
@@ -273,6 +286,8 @@ describe("fetchPRMergeState", () => {
       state: "open",
       merged: false,
       mergeable: null,
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result.mergeableState).toBe("unknown");
@@ -282,6 +297,47 @@ describe("fetchPRMergeState", () => {
     const pf = mockFetch(null, false, 404);
     await expect(fetchPRMergeState("o", "r", 1, "tok", pf)).rejects.toThrow(
       "Failed to fetch PR merge state: 404",
+    );
+  });
+});
+
+describe("updatePRBranch", () => {
+  function mockFetch(data: unknown, ok = true, status = 202) {
+    return vi.fn(async () => ({
+      ok,
+      status,
+      headers: { get: () => null },
+      text: async () => JSON.stringify(data),
+      json: async () => data,
+    }));
+  }
+
+  it("resolves on 202 accepted", async () => {
+    const pf = mockFetch({ message: "Scheduled" });
+    await expect(updatePRBranch("o", "r", 1, "tok", pf)).resolves.toBeUndefined();
+  });
+
+  it("resolves on 422 already up to date", async () => {
+    const pf = mockFetch({ message: "Update is not required" }, false, 422);
+    await expect(updatePRBranch("o", "r", 1, "tok", pf)).resolves.toBeUndefined();
+  });
+
+  it("resolves on 422 no commits between", async () => {
+    const pf = mockFetch({ message: "No commits between main and feat" }, false, 422);
+    await expect(updatePRBranch("o", "r", 1, "tok", pf)).resolves.toBeUndefined();
+  });
+
+  it("throws on 422 with non-uptodate message", async () => {
+    const pf = mockFetch({ message: "Validation Failed" }, false, 422);
+    await expect(updatePRBranch("o", "r", 1, "tok", pf)).rejects.toThrow(
+      "Failed to update PR branch: 422",
+    );
+  });
+
+  it("throws on non-422 error", async () => {
+    const pf = mockFetch(null, false, 403);
+    await expect(updatePRBranch("o", "r", 1, "tok", pf)).rejects.toThrow(
+      "Failed to update PR branch: 403",
     );
   });
 });
