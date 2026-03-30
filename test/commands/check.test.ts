@@ -365,25 +365,33 @@ describe("checkCommand.run", () => {
   });
 
   it("watch calls updatePRBranch once when branch is behind then continues", async () => {
-    const c = makeCtx({ watch: true });
-    const mergeStateBehind = { ...mergeStateClean, mergeableState: "behind" };
-    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
-    // First call returns behind, second returns clean with CI done
-    mockFetchPRMergeState
-      .mockResolvedValueOnce(mergeStateBehind)
-      .mockResolvedValue(mergeStateClean);
-    mockGetCI.mockResolvedValue({
-      status: { ...ciResult.status, pending: 0, failing: 0 },
-      flat: ciResult.flat,
-    } as any);
-    mockGetReviews.mockResolvedValue(reviewsResult);
-    mockFormatReviews.mockReturnValue(reviewsFlat);
-    mockUpdatePRBranch.mockResolvedValue(undefined);
+    vi.useFakeTimers();
+    try {
+      const c = makeCtx({ watch: true });
+      const mergeStateBehind = { ...mergeStateClean, mergeableState: "behind" };
+      mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+      // First call returns behind, second returns clean with CI done
+      mockFetchPRMergeState
+        .mockResolvedValueOnce(mergeStateBehind)
+        .mockResolvedValue(mergeStateClean);
+      mockGetCI.mockResolvedValue({
+        status: { ...ciResult.status, pending: 0, failing: 0 },
+        flat: ciResult.flat,
+      } as any);
+      mockGetReviews.mockResolvedValue(reviewsResult);
+      mockFormatReviews.mockReturnValue(reviewsFlat);
+      mockUpdatePRBranch.mockResolvedValue(undefined);
 
-    const result = (await checkCommand.run(c)) as any;
-    expect(mockUpdatePRBranch).toHaveBeenCalledTimes(1);
-    expect(result.pr.synced).toBe(true);
-    expect(result.pr.ready).toBe(true);
+      const resultPromise = checkCommand.run(c);
+      // Advance past the 5s sync pause so the watch loop continues
+      await vi.advanceTimersByTimeAsync(6000);
+      const result = (await resultPromise) as any;
+      expect(mockUpdatePRBranch).toHaveBeenCalledTimes(1);
+      expect(result.pr.synced).toBe(true);
+      expect(result.pr.ready).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("includes pr section with ready=false when CI failing", async () => {

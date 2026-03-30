@@ -162,7 +162,7 @@ export async function updatePRBranch(
     `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
     token,
     proxyFetch,
-    { method: "PUT", body: "{}" },
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) },
   );
   // 202 = accepted/enqueued, 422 = already up to date or not applicable
   if (!response.ok && response.status !== 422) {
