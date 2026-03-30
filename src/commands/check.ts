@@ -175,13 +175,21 @@ export const checkCommand = {
         // Branch behind base — auto-sync once, then continue polling
         if (mergeState.mergeableState === "behind" && !syncAttempted) {
           syncAttempted = true;
-          await updatePRBranch(
-            ctx.repoInfo.owner,
-            ctx.repoInfo.repo,
-            prNumber,
-            ctx.token,
-            ctx.proxyFetch,
-          );
+          try {
+            await updatePRBranch(
+              ctx.repoInfo.owner,
+              ctx.repoInfo.repo,
+              prNumber,
+              ctx.token,
+              ctx.proxyFetch,
+            );
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to sync branch with base";
+            return c.ok(
+              { pr: { state: mergeState.state, mergeable: mergeState.mergeableState, ready: false, synced: false } },
+              { cta: { description: "Sync failed:", commands: [{ command: `sync ${prNumber}`, description: message }] } },
+            );
+          }
           // Brief pause so GitHub can enqueue the merge commit before next poll
           await new Promise<void>((r) => setTimeout(r, 5000));
           continue;
@@ -289,7 +297,19 @@ export const checkCommand = {
     );
     // Branch behind base — sync first; CI/reviews would be stale after sync
     if (mergeState.mergeableState === "behind") {
-      await updatePRBranch(
+      try {
+        await updatePRBranch(
+          ctx.repoInfo.owner,
+          ctx.repoInfo.repo,
+          prNumber,
+          ctx.token,
+          ctx.proxyFetch,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to sync branch with base";
+        return c.error({ message });
+      }
+      const refreshedMergeState = await fetchPRMergeState(
         ctx.repoInfo.owner,
         ctx.repoInfo.repo,
         prNumber,
@@ -297,7 +317,7 @@ export const checkCommand = {
         ctx.proxyFetch,
       );
       return c.ok(
-        { pr: { state: mergeState.state, mergeable: mergeState.mergeableState, ready: false, synced: true } },
+        { pr: { state: refreshedMergeState.state, mergeable: refreshedMergeState.mergeableState, ready: false, synced: true } },
         {
           cta: {
             description: "Branch synced with base — new CI run triggered:",

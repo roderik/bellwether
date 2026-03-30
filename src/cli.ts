@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { Cli, z } from "incur";
 import { bootstrap, type Context } from "./context.js";
 import { checkCommand } from "./commands/check.js";
+import { syncCommand } from "./commands/sync.js";
 import { hookAddCommand } from "./commands/hook-add.js";
 import { hookCheckCommand } from "./commands/hook-check.js";
 
@@ -51,6 +52,7 @@ hooksCli.command("add", hookAddCommand as unknown as Parameters<typeof hooksCli.
 hooksCli.command("check", hookCheckCommand as unknown as Parameters<typeof hooksCli.command>[1]);
 
 cli.command("check", checkCommand as unknown as Parameters<typeof cli.command>[1]);
+cli.command("sync", syncCommand as unknown as Parameters<typeof cli.command>[1]);
 cli.command(hooksCli as unknown as Cli.Cli & { name: string });
 
 export { cli };

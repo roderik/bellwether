@@ -443,4 +443,49 @@ describe("checkCommand.run", () => {
       ready: true,
     });
   });
+
+  it("returns error when updatePRBranch throws in non-watch behind path", async () => {
+    const c = makeCtx();
+    const mergeStateBehind = { ...mergeStateClean, mergeableState: "behind" };
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateBehind);
+    mockUpdatePRBranch.mockRejectedValue(new Error("permission denied"));
+
+    await checkCommand.run(c);
+    expect(c.error).toHaveBeenCalledWith({ message: "permission denied" });
+    expect(mockGetCI).not.toHaveBeenCalled();
+  });
+
+  it("watch returns sync-failed CTA when updatePRBranch throws", async () => {
+    const c = makeCtx({ watch: true });
+    const mergeStateBehind = { ...mergeStateClean, mergeableState: "behind" };
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateBehind);
+    mockUpdatePRBranch.mockRejectedValue(new Error("403 forbidden"));
+
+    const result = (await checkCommand.run(c)) as any;
+    expect(result.pr.synced).toBe(false);
+    expect(result.pr.mergeable).toBe("behind");
+  });
+
+  it("watch counts unresolved comments correctly", async () => {
+    const c = makeCtx({ watch: true });
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
+    mockGetCI.mockResolvedValue({
+      status: { ...ciResult.status, pending: 0, failing: 0 },
+      flat: ciResult.flat,
+    } as any);
+    mockGetReviews.mockResolvedValue({
+      comments: [
+        { id: 1, isResolved: false, hasHumanReply: false, hasAnyReply: false } as any,
+        { id: 2, isResolved: true, hasHumanReply: false, hasAnyReply: false } as any,
+      ],
+      total: 2,
+    });
+    mockFormatReviews.mockReturnValue({ total: "1 unresolved, 1 unanswered" });
+
+    const result = (await checkCommand.run(c)) as any;
+    expect(result.pr.ready).toBe(false);
+  });
 });
