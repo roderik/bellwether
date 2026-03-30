@@ -34,3 +34,12 @@ export {
 } from "./comments.js";
 
 export { type FailingCheck, type CIStatus, fetchCIStatus } from "./checks.js";
+
+export {
+  type ConflictHunk,
+  type FileConflict,
+  type UpdateBranchResult,
+  detectLocalConflicts,
+  parseMergeTreeOutput,
+  extractConflictHunks,
+} from "./sync.js";
