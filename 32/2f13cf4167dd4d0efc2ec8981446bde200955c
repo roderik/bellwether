@@ -1,0 +1,36 @@
+src/commands/check.ts
+  c34c02060f1710d4 17,34,53,138,144,153,160,165,167,175-176,189-190,192-205,212,224-225,236,240,246,253,261,275,279-286,302,306,310,328,341-349,353-354,357,361-362,365,370-372,376,379,381-382,385,390,396
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "322f13cf4167dd4d0efc2ec8981446bde200955c",
+  "prompts": {
+    "35a083ad82e4249d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f59fabd-3161-4058-a81a-ae533a7e91fa",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "c34c02060f1710d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "056fd8c7-8f00-48d2-b1d1-33feaae280dd",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 5,
+      "accepted_lines": 73,
+      "overriden_lines": 0
+    }
+  }
+}
