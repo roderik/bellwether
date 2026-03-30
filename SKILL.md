@@ -59,12 +59,12 @@ For each `REVIEW` key in the reviews section:
 
 **Bot comments** (CodeRabbit, Copilot, Cursor Bugbot):
 - **True positive** — real bug → fix the code
-- **False positive** — bot doesn't understand the pattern → won't fix
-- **Uncertain** — ask the user
+- **False positive** — bot doesn't understand the pattern → reply explaining why, won't fix
+- **Uncertain** — default to fixing it. Only ask the user if the fix would require a major architectural change.
 
 **Human comments**:
 - **Actionable** — fix the code
-- **Discussion** — ask the user
+- **Discussion/opinion** — fix it using your best judgment. Only ask the user if it's a product decision you genuinely cannot make.
 - **Already addressed** — reply only
 
 ### Fix and commit
@@ -93,9 +93,9 @@ After all replies, go to step 1 — restart the watch.
 
 ## Principles
 
+- **Fix everything, don't ask** — your job is to resolve all issues autonomously. Fix CI failures, address reviews, resolve conflicts. Do NOT ask the user "should I fix this?" — the answer is always yes. Only escalate if a fix requires a product decision you genuinely cannot make (e.g. choosing between two valid business rules).
 - **One fix per watch cycle** — fix CI OR reviews, not both. Push and restart watch.
 - **Minimal changes** — don't refactor unrelated code.
 - **Every comment gets a response** — no silent ignores.
-- **Ask when uncertain** — don't guess on architectural questions.
 - **Verify before pushing** — always run the failing check locally first.
 - **Never stop until terminal** — if `pr.ready` is false, keep going.
