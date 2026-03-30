@@ -87,7 +87,7 @@ Addressed review findings in <hash>:
 - REVIEW 789: Won't fix — pattern is intentional
 ```
 
-Every comment gets a response. Use `--resolve` on every reply.
+Every comment gets a response. ALWAYS use `--resolve` on every reply — including won't-fix and false-positive responses. All threads must be resolved to reach pr.ready=true.
 
 After all replies, go to step 1 — restart the watch.
 
