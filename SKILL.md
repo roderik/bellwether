@@ -14,7 +14,7 @@ Self-contained cycle: watch CI → fix failures → address reviews → watch ag
 
 ## Critical: Use the bellwether CLI
 
-- The ONLY way to check CI status, PR state, and reviews is `npx -y bellwether check --watch`. This command blocks until CI completes — do NOT add sleep or polling.
+- The ONLY way to check CI status, PR state, and reviews is `npx -y bellwether check --watch`. This command blocks until CI completes or the watch times out — do NOT add sleep or polling. Use `--timeout` to extend the wait; never resort to manual polling.
 - NEVER use `gh api`, `gh pr checks`, `gh pr view --json`, `gh api repos/*/check-runs`, or any manual GitHub API calls to check CI or review status.
 - NEVER use `sleep` to wait for CI. The `--watch` flag handles waiting internally.
 - NEVER parse review comments manually via `gh api`. The bellwether CLI returns them in structured format.
@@ -24,7 +24,7 @@ Self-contained cycle: watch CI → fix failures → address reviews → watch ag
 ## The Loop
 
 ```
-1. npx -y bellwether check --watch        (blocks until CI completes; DO NOT substitute with gh/GitHub API calls — use this exact command)
+1. npx -y bellwether check --watch        (blocks until CI completes or the watch times out; DO NOT substitute with gh/GitHub API calls — use this exact command)
 2. If pr.ready=true → done, report "merge-ready"
 3. If pr.state=merged|closed → done, report status
 4. If CI failures → fix them (Step 2), push, go to 1
