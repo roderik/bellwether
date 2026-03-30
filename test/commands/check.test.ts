@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../src/context.js", () => ({
   resolvePR: vi.fn(),
@@ -102,6 +102,10 @@ const mergeStateDirty = {
 };
 
 describe("checkCommand.run", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("returns both ci and reviews sections", async () => {
     const c = makeCtx();
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
