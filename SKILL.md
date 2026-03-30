@@ -14,17 +14,17 @@ Self-contained cycle: watch CI → fix failures → address reviews → watch ag
 
 ## Critical: Use the bellwether CLI
 
-- The ONLY way to check CI status, PR state, and reviews is `npx -y bellwether check --watch`. This command returns as soon as there is actionable work (CI failures, unresolved reviews) or when all checks pass. It only polls while CI is pending with nothing to do. Do NOT add sleep or polling.
+- The ONLY way to check CI status, PR state, and reviews is `bellwether check --watch`. This command returns as soon as there is actionable work (CI failures, unresolved reviews) or when all checks pass. It only polls while CI is pending with nothing to do. Do NOT add sleep or polling.
 - NEVER use `gh api`, `gh pr checks`, `gh pr view --json`, `gh api repos/*/check-runs`, or any manual GitHub API calls to check CI or review status.
 - NEVER use `sleep` to wait for CI. The `--watch` flag handles waiting internally.
 - NEVER parse review comments manually via `gh api`. The bellwether CLI returns them in structured format.
-- The bellwether CLI is an npm package — `npx -y bellwether` ensures it's installed and runs it.
+- If `bellwether` is not found, install it first: `npm install -g bellwether`
 - Every interaction with GitHub goes through the bellwether CLI. Zero manual GitHub API usage.
 
 ## The Loop
 
 ```
-1. npx -y bellwether check --watch        (returns when actionable: CI failures, unresolved reviews, all passing, or timeout; DO NOT substitute with gh/GitHub API calls — use this exact command)
+1. bellwether check --watch        (returns when actionable: CI failures, unresolved reviews, all passing, or timeout; DO NOT substitute with gh/GitHub API calls — use this exact command)
 2. If pr.ready=true → done, report "merge-ready"
 3. If pr.state=merged|closed → done, report status
 4. If CI failures → fix them (Step 2), push, go to 1
@@ -33,7 +33,7 @@ Self-contained cycle: watch CI → fix failures → address reviews → watch ag
 7. If timed out → go to 1 (restart watch)
 ```
 
-## What `npx -y bellwether check --watch` returns
+## What `bellwether check --watch` returns
 
 Three sections:
 
@@ -59,12 +59,12 @@ For each `REVIEW` key in the reviews section:
 
 **Bot comments** (CodeRabbit, Copilot, Cursor Bugbot):
 - **True positive** — real bug → fix the code
-- **False positive** — bot doesn't understand the pattern → won't fix
-- **Uncertain** — ask the user
+- **False positive** — bot doesn't understand the pattern → reply explaining why, won't fix
+- **Uncertain** — default to fixing it. Only ask the user if the fix would require a major architectural change.
 
 **Human comments**:
 - **Actionable** — fix the code
-- **Discussion** — ask the user
+- **Discussion/opinion** — fix it using your best judgment. Only ask the user if it's a product decision you genuinely cannot make.
 - **Already addressed** — reply only
 
 ### Fix and commit
@@ -76,7 +76,7 @@ Fix all true positives and actionable items in a single commit. Verify locally, 
 For inline code review comments (with file path), reply individually with `--resolve`:
 
 ```bash
-npx -y bellwether check --reply "<id>:Fixed in <hash>. <description>" --resolve
+bellwether check --reply "<id>:Fixed in <hash>. <description>" --resolve
 ```
 
 For top-level bot comments (no file path), post a single summary reply:
@@ -93,9 +93,9 @@ After all replies, go to step 1 — restart the watch.
 
 ## Principles
 
+- **Fix everything, don't ask** — your job is to resolve all issues autonomously. Fix CI failures, address reviews, resolve conflicts. Do NOT ask the user "should I fix this?" — the answer is always yes. Only escalate if a fix requires a product decision you genuinely cannot make (e.g. choosing between two valid business rules).
 - **One fix per watch cycle** — fix CI OR reviews, not both. Push and restart watch.
 - **Minimal changes** — don't refactor unrelated code.
 - **Every comment gets a response** — no silent ignores.
-- **Ask when uncertain** — don't guess on architectural questions.
 - **Verify before pushing** — always run the failing check locally first.
 - **Never stop until terminal** — if `pr.ready` is false, keep going.
