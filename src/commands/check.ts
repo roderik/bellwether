@@ -1,6 +1,11 @@
 import { z } from "incur";
 import { resolvePR, type Context } from "../context.js";
-import { fetchPRMergeState, type PRMergeState, type CIStatus } from "../github/index.js";
+import {
+  fetchPRMergeState,
+  updatePRBranch,
+  type PRMergeState,
+  type CIStatus,
+} from "../github/index.js";
 import { getCISection } from "./ci.js";
 import {
   getReviewsList,
@@ -94,6 +99,17 @@ export const checkCommand = {
           .describe(
             "true when state=open, mergeableState=clean, all CI passing, zero unresolved reviews",
           ),
+        synced: z
+          .boolean()
+          .optional()
+          .describe("true when bellwether triggered an update-branch to sync with base"),
+        conflict: z
+          .object({
+            base: z.string().describe("Base branch that conflicts with the PR head"),
+            resolution: z.string().describe("Git command to resolve the conflict locally"),
+          })
+          .optional()
+          .describe("Present when mergeableState=dirty; provides actionable resolution steps"),
       })
       .optional(),
     ci: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -145,6 +161,8 @@ export const checkCommand = {
     // Watch mode — poll until CI terminal
     if (opts.watch) {
       const start = Date.now();
+      let currentHeadSha = headSha;
+      let syncAttempted = false;
       while (true) {
         const [mergeState, { status, flat: ciFlat }, reviewData] = await Promise.all([
           fetchPRMergeState(
@@ -154,19 +172,71 @@ export const checkCommand = {
             ctx.token,
             ctx.proxyFetch,
           ),
-          getCISection(ctx, prNumber, headSha),
+          getCISection(ctx, prNumber, currentHeadSha),
           getReviewsList(ctx, prNumber, filterOpts),
         ]);
+
+        // Track head SHA so CI is always fetched against the current commit
+        currentHeadSha = mergeState.headSha;
+
+        // Merge conflict — report clearly and exit; cannot auto-resolve
+        if (mergeState.mergeableState === "dirty") {
+          const reviewsFlat = formatReviewsSection(reviewData.comments);
+          const unresolvedCount = reviewData.comments.filter(
+            (cm) => !(cm.isResolved || cm.hasHumanReply),
+          ).length;
+          const prSection = buildPRSection(mergeState, status, unresolvedCount);
+          return c.ok(
+            {
+              pr: {
+                ...prSection,
+                conflict: {
+                  base: mergeState.baseBranch,
+                  resolution: `git fetch origin && git merge origin/${mergeState.baseBranch} && git push`,
+                },
+              },
+              ci: ciFlat,
+              reviews: reviewsFlat,
+            },
+            {
+              cta: {
+                description: "Merge conflict with base branch:",
+                commands: [
+                  {
+                    command: `git fetch origin && git merge origin/${mergeState.baseBranch} && git push`,
+                    description: "Merge base into PR branch to resolve",
+                  },
+                ],
+              },
+            },
+          );
+        }
+
+        // Branch behind base — auto-sync once, then continue polling
+        if (mergeState.mergeableState === "behind" && !syncAttempted) {
+          syncAttempted = true;
+          await updatePRBranch(
+            ctx.repoInfo.owner,
+            ctx.repoInfo.repo,
+            prNumber,
+            ctx.token,
+            ctx.proxyFetch,
+          );
+          // Brief pause so GitHub can enqueue the merge commit before next poll
+          await new Promise<void>((r) => setTimeout(r, 5000));
+          continue;
+        }
 
         const reviewsFlat = formatReviewsSection(reviewData.comments);
         const unresolvedCount = reviewData.comments.filter(
           (cm) => !(cm.isResolved || cm.hasHumanReply),
         ).length;
         const prSection = buildPRSection(mergeState, status, unresolvedCount);
+        const prSectionWithSync = syncAttempted ? { ...prSection, synced: true } : prSection;
 
         if (status.failing === 0 && status.pending === 0) {
           return c.ok({
-            pr: prSection,
+            pr: prSectionWithSync,
             ci: { ...ciFlat, allPassing: true },
             reviews: reviewsFlat,
           });
@@ -175,7 +245,7 @@ export const checkCommand = {
         if (status.failing > 0 && status.pending === 0) {
           return c.ok(
             {
-              pr: prSection,
+              pr: prSectionWithSync,
               ci: { ...ciFlat, allPassing: false },
               reviews: reviewsFlat,
             },
@@ -193,7 +263,7 @@ export const checkCommand = {
         if ((Date.now() - start) / 1000 >= opts.timeout) {
           return c.ok(
             {
-              pr: prSection,
+              pr: prSectionWithSync,
               ci: { ...ciFlat, timedOut: true },
               reviews: reviewsFlat,
             },
@@ -227,6 +297,54 @@ export const checkCommand = {
       (cm) => !(cm.isResolved || cm.hasHumanReply),
     ).length;
     const prSection = buildPRSection(mergeState, status, unresolvedCount);
+
+    // Merge conflict — report and exit
+    if (mergeState.mergeableState === "dirty") {
+      return c.ok(
+        {
+          pr: {
+            ...prSection,
+            conflict: {
+              base: mergeState.baseBranch,
+              resolution: `git fetch origin && git merge origin/${mergeState.baseBranch} && git push`,
+            },
+          },
+          ci: ciFlat,
+          reviews: reviewsFlat,
+        },
+        {
+          cta: {
+            description: "Merge conflict with base branch:",
+            commands: [
+              {
+                command: `git fetch origin && git merge origin/${mergeState.baseBranch} && git push`,
+                description: "Merge base into PR branch to resolve",
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    // Branch behind base — trigger sync and recommend watching for new CI
+    if (mergeState.mergeableState === "behind") {
+      await updatePRBranch(
+        ctx.repoInfo.owner,
+        ctx.repoInfo.repo,
+        prNumber,
+        ctx.token,
+        ctx.proxyFetch,
+      );
+      return c.ok(
+        { pr: { ...prSection, synced: true }, ci: ciFlat, reviews: reviewsFlat },
+        {
+          cta: {
+            description: "Branch synced with base — new CI run triggered:",
+            commands: [{ command: "check --watch", description: "Watch new CI run" }],
+          },
+        },
+      );
+    }
 
     return c.ok(
       { pr: prSection, ci: ciFlat, reviews: reviewsFlat },
