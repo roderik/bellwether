@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { z } from "incur";
 
-const HOOK_COMMAND = "npx -y bellwether@latest hooks check --format json";
+const HOOK_COMMAND = "npx -y bellwether hooks check --format json";
 const HOOK_TIMEOUT = 15;
-const BELLWETHER_MARKER = "bellwether@latest hooks check";
+const BELLWETHER_MARKER = "bellwether hooks check";
 
 // ---------------------------------------------------------------------------
 // Claude Code: ~/.claude/settings.json

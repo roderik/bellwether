@@ -15,7 +15,7 @@ Self-contained cycle: watch CI → fix failures → address reviews → watch ag
 ## The Loop
 
 ```
-1. npx -y bellwether@latest check --watch        (blocks until CI completes)
+1. npx -y bellwether check --watch        (blocks until CI completes)
 2. If pr.ready=true → done, report "merge-ready"
 3. If pr.state=merged|closed → done, report status
 4. If CI failures → fix them (Step 2), push, go to 1
@@ -24,7 +24,7 @@ Self-contained cycle: watch CI → fix failures → address reviews → watch ag
 7. If timed out → go to 1 (restart watch)
 ```
 
-## What `npx -y bellwether@latest check --watch` returns
+## What `npx -y bellwether check --watch` returns
 
 Three sections:
 
@@ -67,7 +67,7 @@ Fix all true positives and actionable items in a single commit. Verify locally, 
 For inline code review comments (with file path), reply individually with `--resolve`:
 
 ```bash
-npx -y bellwether@latest check --reply "<id>:Fixed in <hash>. <description>" --resolve
+npx -y bellwether check --reply "<id>:Fixed in <hash>. <description>" --resolve
 ```
 
 For top-level bot comments (no file path), post a single summary reply:
