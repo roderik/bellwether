@@ -1,6 +1,6 @@
 {
   "name": "bellwether",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Drive PRs to merge-ready: watch CI, fix failures, resolve review comments. Self-contained watch loop that keeps going until pr.ready=true.",
   "author": {
     "name": "Roderik van der Veer",
