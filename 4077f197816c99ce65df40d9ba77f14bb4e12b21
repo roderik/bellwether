@@ -1,0 +1,46 @@
+hooks/hooks.json
+  c34c02060f1710d4 10,16,22
+src/commands/hook-check.ts
+  c34c02060f1710d4 39
+skills/bellwether/SKILL.md
+  c34c02060f1710d4 17,21,27,36
+src/commands/hook-add.ts
+  c34c02060f1710d4 7
+README.md
+  c34c02060f1710d4 27-28,30-31
+SKILL.md
+  c34c02060f1710d4 17,21,27,36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "4077f197816c99ce65df40d9ba77f14bb4e12b21",
+  "prompts": {
+    "35a083ad82e4249d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f59fabd-3161-4058-a81a-ae533a7e91fa",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "c34c02060f1710d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "056fd8c7-8f00-48d2-b1d1-33feaae280dd",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 28,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    }
+  }
+}
