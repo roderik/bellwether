@@ -1,10 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import { hookCheckCommand } from "../../src/commands/hook-check.js";
 
+type StdinAsyncIterator = typeof process.stdin[typeof Symbol.asyncIterator];
+
 function mockStdin(data: string) {
-  vi.spyOn(process.stdin, Symbol.asyncIterator).mockImplementation(async function* () {
-    yield Buffer.from(data);
-  });
+  vi.spyOn(process.stdin, Symbol.asyncIterator).mockImplementation(
+    (async function* stdinMock() {
+      yield Buffer.from(data);
+    }) as unknown as StdinAsyncIterator,
+  );
 }
 
 function makeCtx() {
@@ -94,9 +98,11 @@ describe("hookCheckCommand", () => {
   });
 
   it("returns empty object for empty stdin", async () => {
-    vi.spyOn(process.stdin, Symbol.asyncIterator).mockImplementation(async function* () {
-      // yields nothing — empty stream
-    });
+    vi.spyOn(process.stdin, Symbol.asyncIterator).mockImplementation(
+      (async function* emptyStdinMock() {
+        // yields nothing — empty stream
+      }) as unknown as StdinAsyncIterator,
+    );
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
     expect(ok).toHaveBeenCalledWith({});
