@@ -133,7 +133,7 @@ export const checkCommand = {
   ],
   async run(c: CheckCommandContext) {
     const ctx: Context = c.var.ctx;
-    const { prNumber, headSha } = await resolvePR(ctx, c.args.pr);
+    const { prNumber } = await resolvePR(ctx, c.args.pr);
     const opts = c.options;
 
     // Reply mode — no CI fetch needed
@@ -161,23 +161,37 @@ export const checkCommand = {
     // Watch mode — poll until CI terminal
     if (opts.watch) {
       const start = Date.now();
-      let currentHeadSha = headSha;
       let syncAttempted = false;
       while (true) {
-        const [mergeState, { status, flat: ciFlat }, reviewData] = await Promise.all([
-          fetchPRMergeState(
+        // Fetch merge state first so headSha is always current before CI fetch
+        const mergeState = await fetchPRMergeState(
+          ctx.repoInfo.owner,
+          ctx.repoInfo.repo,
+          prNumber,
+          ctx.token,
+          ctx.proxyFetch,
+        );
+
+        // Branch behind base — auto-sync once, then continue polling
+        if (mergeState.mergeableState === "behind" && !syncAttempted) {
+          syncAttempted = true;
+          await updatePRBranch(
             ctx.repoInfo.owner,
             ctx.repoInfo.repo,
             prNumber,
             ctx.token,
             ctx.proxyFetch,
-          ),
-          getCISection(ctx, prNumber, currentHeadSha),
+          );
+          // Brief pause so GitHub can enqueue the merge commit before next poll
+          await new Promise<void>((r) => setTimeout(r, 5000));
+          continue;
+        }
+
+        // Fetch CI (using current headSha) and reviews in parallel
+        const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
+          getCISection(ctx, prNumber, mergeState.headSha),
           getReviewsList(ctx, prNumber, filterOpts),
         ]);
-
-        // Track head SHA so CI is always fetched against the current commit
-        currentHeadSha = mergeState.headSha;
 
         // Merge conflict — report clearly and exit; cannot auto-resolve
         if (mergeState.mergeableState === "dirty") {
@@ -210,21 +224,6 @@ export const checkCommand = {
               },
             },
           );
-        }
-
-        // Branch behind base — auto-sync once, then continue polling
-        if (mergeState.mergeableState === "behind" && !syncAttempted) {
-          syncAttempted = true;
-          await updatePRBranch(
-            ctx.repoInfo.owner,
-            ctx.repoInfo.repo,
-            prNumber,
-            ctx.token,
-            ctx.proxyFetch,
-          );
-          // Brief pause so GitHub can enqueue the merge commit before next poll
-          await new Promise<void>((r) => setTimeout(r, 5000));
-          continue;
         }
 
         const reviewsFlat = formatReviewsSection(reviewData.comments);
@@ -285,10 +284,16 @@ export const checkCommand = {
       }
     }
 
-    // Default: fetch all in parallel
-    const [mergeState, { status, flat: ciFlat }, reviewData] = await Promise.all([
-      fetchPRMergeState(ctx.repoInfo.owner, ctx.repoInfo.repo, prNumber, ctx.token, ctx.proxyFetch),
-      getCISection(ctx, prNumber, headSha),
+    // Default: fetch mergeState first for current headSha, then CI+reviews in parallel
+    const mergeState = await fetchPRMergeState(
+      ctx.repoInfo.owner,
+      ctx.repoInfo.repo,
+      prNumber,
+      ctx.token,
+      ctx.proxyFetch,
+    );
+    const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
+      getCISection(ctx, prNumber, mergeState.headSha),
       getReviewsList(ctx, prNumber, filterOpts),
     ]);
 
