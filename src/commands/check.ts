@@ -206,30 +206,19 @@ export const checkCommand = {
           continue;
         }
 
-        // Fetch CI (using current headSha) and reviews in parallel
-        const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
-          getCISection(ctx, prNumber, mergeState.headSha),
-          getReviewsList(ctx, prNumber, filterOpts),
-        ]);
-
-        // Merge conflict — report clearly and exit; cannot auto-resolve
+        // Merge conflict — report immediately without fetching CI/reviews
         if (mergeState.mergeableState === "dirty") {
-          const reviewsFlat = formatReviewsSection(reviewData.comments);
-          const unresolvedCount = reviewData.comments.filter(
-            (cm) => !(cm.isResolved || cm.hasHumanReply),
-          ).length;
-          const prSection = buildPRSection(mergeState, status, unresolvedCount);
           return c.ok(
             {
               pr: {
-                ...prSection,
+                state: mergeState.state,
+                mergeable: mergeState.mergeableState,
+                ready: false,
                 conflict: {
                   base: mergeState.baseBranch,
                   resolution: `git fetch origin && git merge origin/${mergeState.baseBranch} && git push`,
                 },
               },
-              ci: ciFlat,
-              reviews: reviewsFlat,
             },
             {
               cta: {
@@ -244,6 +233,12 @@ export const checkCommand = {
             },
           );
         }
+
+        // Fetch CI (using current headSha) and reviews in parallel
+        const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
+          getCISection(ctx, prNumber, mergeState.headSha),
+          getReviewsList(ctx, prNumber, filterOpts),
+        ]);
 
         const reviewsFlat = formatReviewsSection(reviewData.comments);
         const unresolvedCount = reviewData.comments.filter(
@@ -311,30 +306,39 @@ export const checkCommand = {
       ctx.token,
       ctx.proxyFetch,
     );
-    const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
-      getCISection(ctx, prNumber, mergeState.headSha),
-      getReviewsList(ctx, prNumber, filterOpts),
-    ]);
+    // Branch behind base — sync first; CI/reviews would be stale after sync
+    if (mergeState.mergeableState === "behind") {
+      await updatePRBranch(
+        ctx.repoInfo.owner,
+        ctx.repoInfo.repo,
+        prNumber,
+        ctx.token,
+        ctx.proxyFetch,
+      );
+      return c.ok(
+        { pr: { state: mergeState.state, mergeable: mergeState.mergeableState, ready: false, synced: true } },
+        {
+          cta: {
+            description: "Branch synced with base — new CI run triggered:",
+            commands: [{ command: "check --watch", description: "Watch new CI run" }],
+          },
+        },
+      );
+    }
 
-    const reviewsFlat = formatReviewsSection(reviewData.comments);
-    const unresolvedCount = reviewData.comments.filter(
-      (cm) => !(cm.isResolved || cm.hasHumanReply),
-    ).length;
-    const prSection = buildPRSection(mergeState, status, unresolvedCount);
-
-    // Merge conflict — report and exit
+    // Merge conflict — report without fetching CI/reviews
     if (mergeState.mergeableState === "dirty") {
       return c.ok(
         {
           pr: {
-            ...prSection,
+            state: mergeState.state,
+            mergeable: mergeState.mergeableState,
+            ready: false,
             conflict: {
               base: mergeState.baseBranch,
               resolution: `git fetch origin && git merge origin/${mergeState.baseBranch} && git push`,
             },
           },
-          ci: ciFlat,
-          reviews: reviewsFlat,
         },
         {
           cta: {
@@ -350,25 +354,16 @@ export const checkCommand = {
       );
     }
 
-    // Branch behind base — trigger sync and recommend watching for new CI
-    if (mergeState.mergeableState === "behind") {
-      await updatePRBranch(
-        ctx.repoInfo.owner,
-        ctx.repoInfo.repo,
-        prNumber,
-        ctx.token,
-        ctx.proxyFetch,
-      );
-      return c.ok(
-        { pr: { ...prSection, synced: true }, ci: ciFlat, reviews: reviewsFlat },
-        {
-          cta: {
-            description: "Branch synced with base — new CI run triggered:",
-            commands: [{ command: "check --watch", description: "Watch new CI run" }],
-          },
-        },
-      );
-    }
+    const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
+      getCISection(ctx, prNumber, mergeState.headSha),
+      getReviewsList(ctx, prNumber, filterOpts),
+    ]);
+
+    const reviewsFlat = formatReviewsSection(reviewData.comments);
+    const unresolvedCount = reviewData.comments.filter(
+      (cm) => !(cm.isResolved || cm.hasHumanReply),
+    ).length;
+    const prSection = buildPRSection(mergeState, status, unresolvedCount);
 
     const defaultSyncCTA = buildSyncCTA(mergeState.mergeableState, prNumber);
     return c.ok(

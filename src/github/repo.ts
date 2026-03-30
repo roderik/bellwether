@@ -164,8 +164,28 @@ export async function updatePRBranch(
     proxyFetch,
     { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) },
   );
-  // 202 = accepted/enqueued, 422 = already up to date or not applicable
-  if (!response.ok && response.status !== 422) {
-    throw new Error(`Failed to update PR branch: ${response.status}`);
+  // 202 = accepted/enqueued
+  if (response.ok) {
+    return;
   }
+
+  // 422 = validation failed; may mean "already up to date" or "not applicable"
+  if (response.status === 422) {
+    try {
+      const body = (await response.json()) as { message?: string } | null;
+      const message = typeof body?.message === "string" ? body.message : "";
+      const normalized = message.toLowerCase();
+      if (
+        normalized.includes("update is not required") ||
+        normalized.includes("no commits between") ||
+        normalized.includes("up to date")
+      ) {
+        return; // already up to date — treat as a successful no-op
+      }
+    } catch {
+      // fall through to throw below
+    }
+  }
+
+  throw new Error(`Failed to update PR branch: ${response.status}`);
 }
