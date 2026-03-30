@@ -24,11 +24,11 @@ bellwether closes that loop. It watches CI directly from your terminal (or your 
 ## Install
 
 ```bash
-# As a Claude Code skill (recommended for AI agents)
-npx bellwether skills add
+# Install globally (required — npx on-the-fly doesn't work from AI agents)
+npm install -g bellwether
 
-# Or run it directly — no install needed
-npx bellwether check
+# Then add the Claude Code skill
+bellwether skills add
 ```
 
 ## Hooks
@@ -37,10 +37,10 @@ Bellwether can install PostToolUse hooks into Claude Code (`~/.claude/settings.j
 
 ```bash
 # Install hooks into Claude Code and Codex
-npx bellwether hooks add
+bellwether hooks add
 
 # PostToolUse hook handler (called automatically by Claude Code / Codex)
-npx bellwether hooks check --format json
+bellwether hooks check --format json
 ```
 
 `hooks add` is idempotent — re-running it replaces any existing bellwether hook entries with the latest configuration.
@@ -49,22 +49,22 @@ npx bellwether hooks check --format json
 
 ```bash
 # Watch CI + review comments + merge state
-npx bellwether check --watch
+bellwether check --watch
 
 # One-shot status check
-npx bellwether check
+bellwether check
 
 # Show only unresolved review comments
-npx bellwether check --unresolved
+bellwether check --unresolved
 
 # Reply to a review comment and resolve it
-npx bellwether check --reply "456:Fixed in abc1234" --resolve
+bellwether check --reply "456:Fixed in abc1234" --resolve
 
 # Full detail on a specific comment
-npx bellwether check --detail 456
+bellwether check --detail 456
 
 # Full help
-npx bellwether check --help
+bellwether check --help
 ```
 
 ## Output
@@ -110,7 +110,7 @@ It queries GitHub's Check Runs API directly, filters job logs down to signal (co
 bellwether ships as a Claude Code skill. Once installed, your agent gets a `SKILL.md` covering the full loop: watch CI → fix failures → address reviews → push → repeat until `pr.ready = true`.
 
 ```bash
-npx bellwether skills add
+bellwether skills add
 ```
 
 The skill is also available on the [Claude Code marketplace](https://github.com/roderik/bellwether/blob/main/marketplace.json).
