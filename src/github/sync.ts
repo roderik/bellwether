@@ -76,7 +76,13 @@ export function detectLocalConflicts(
   prHeadRef = "HEAD",
   maxHunksPerFile = 3,
 ): FileConflict[] {
-  const fetchResult = spawnSync("git", ["fetch", "--quiet", "origin", baseBranch], {
+  // Guard against option injection: branch names starting with '-' would be
+  // interpreted as git options.
+  if (baseBranch.startsWith("-")) {
+    return [];
+  }
+
+  const fetchResult = spawnSync("git", ["fetch", "--quiet", "origin", "--", baseBranch], {
     cwd: repoRoot,
     encoding: "utf-8",
   });
@@ -84,9 +90,20 @@ export function detectLocalConflicts(
     return [];
   }
 
+  // Verify prHeadRef exists locally before attempting merge-base/merge-tree.
+  // If the caller passed a remote SHA that hasn't been fetched, the git
+  // commands below would silently fail and return no conflict info.
+  const refCheck = spawnSync("git", ["cat-file", "-e", `${prHeadRef}^{commit}`], {
+    cwd: repoRoot,
+    encoding: "utf-8",
+  });
+  if (refCheck.status !== 0) {
+    return [];
+  }
+
   const mergeBaseResult = spawnSync(
     "git",
-    ["merge-base", prHeadRef, `origin/${baseBranch}`],
+    ["merge-base", "--", prHeadRef, `origin/${baseBranch}`],
     { cwd: repoRoot, encoding: "utf-8" },
   );
   if (mergeBaseResult.status !== 0 || !mergeBaseResult.stdout.trim()) {
@@ -164,8 +181,8 @@ export function extractConflictHunks(text: string, maxHunks: number): ConflictHu
       }
 
       hunks.push({
-        ours: oursLines.join("\n").trim(),
-        theirs: theirsLines.join("\n").trim(),
+        ours: oursLines.join("\n"),
+        theirs: theirsLines.join("\n"),
       });
     } else {
       i++;

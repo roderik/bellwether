@@ -387,7 +387,7 @@ describe("checkCommand.run", () => {
     await checkCommand.run(c);
     const meta = c.ok.mock.calls[0][1] as any;
     expect(meta.cta.description).toContain("behind base branch");
-    expect(meta.cta.commands[0].command).toBe("sync");
+    expect(meta.cta.commands[0].command).toBe("sync 1");
   });
 
   it("watch exits early with sync CTA when PR is dirty", async () => {
@@ -398,7 +398,7 @@ describe("checkCommand.run", () => {
     await checkCommand.run(c);
     const data = c.ok.mock.calls[0][0] as any;
     const meta = c.ok.mock.calls[0][1] as any;
-    expect(meta.cta.commands[0].command).toBe("sync");
+    expect(meta.cta.commands[0].command).toBe("sync 1");
     // pr section is returned but ci/reviews are omitted (not fetched)
     expect(data.pr).toBeDefined();
     expect(data.ci).toBeUndefined();

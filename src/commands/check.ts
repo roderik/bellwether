@@ -29,17 +29,18 @@ function buildPRSection(
 
 function buildSyncCTA(
   mergeableState: string,
+  prNumber: number,
 ): { description: string; commands: { command: string; description: string }[] } | undefined {
   if (mergeableState === "dirty") {
     return {
       description: "PR has merge conflicts:",
-      commands: [{ command: "sync", description: "Show conflict details" }],
+      commands: [{ command: `sync ${prNumber}`, description: "Show conflict details" }],
     };
   }
   if (mergeableState === "behind") {
     return {
       description: "PR is behind base branch:",
-      commands: [{ command: "sync", description: "Sync with base branch" }],
+      commands: [{ command: `sync ${prNumber}`, description: "Sync with base branch" }],
     };
   }
   return undefined;
@@ -173,7 +174,7 @@ export const checkCommand = {
           ctx.proxyFetch,
         );
 
-        const syncCTA = buildSyncCTA(mergeState.mergeableState);
+        const syncCTA = buildSyncCTA(mergeState.mergeableState, prNumber);
         if (syncCTA) {
           const prSection = buildPRSection(mergeState, { failing: 0, pending: 0 } as CIStatus, 0);
           return c.ok({ pr: prSection }, { cta: syncCTA });
@@ -254,7 +255,7 @@ export const checkCommand = {
     ).length;
     const prSection = buildPRSection(mergeState, status, unresolvedCount);
 
-    const defaultSyncCTA = buildSyncCTA(mergeState.mergeableState);
+    const defaultSyncCTA = buildSyncCTA(mergeState.mergeableState, prNumber);
     return c.ok(
       { pr: prSection, ci: ciFlat, reviews: reviewsFlat },
       {

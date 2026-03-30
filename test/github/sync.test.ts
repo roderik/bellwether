@@ -101,25 +101,39 @@ describe("detectLocalConflicts", () => {
     mockSpawnSync.mockReset();
   });
 
+  it("returns [] when baseBranch starts with -", () => {
+    expect(detectLocalConflicts("-evil", "/repo")).toEqual([]);
+    expect(mockSpawnSync).not.toHaveBeenCalled();
+  });
+
   it("returns [] when git fetch fails", () => {
     spawnFail();
     expect(detectLocalConflicts("main", "/repo")).toEqual([]);
   });
 
+  it("returns [] when cat-file check fails (prHeadRef not available locally)", () => {
+    spawnOk(); // fetch ok
+    spawnFail(); // cat-file fails
+    expect(detectLocalConflicts("main", "/repo")).toEqual([]);
+  });
+
   it("returns [] when merge-base fails", () => {
     spawnOk(); // fetch ok
+    spawnOk(); // cat-file ok
     spawnFail(); // merge-base fails
     expect(detectLocalConflicts("main", "/repo")).toEqual([]);
   });
 
   it("returns [] when merge-base has no output", () => {
     spawnOk(); // fetch ok
+    spawnOk(); // cat-file ok
     spawnOk(""); // merge-base empty output
     expect(detectLocalConflicts("main", "/repo")).toEqual([]);
   });
 
   it("returns [] when merge-tree has no output", () => {
     spawnOk(); // fetch ok
+    spawnOk(); // cat-file ok
     spawnOk("abc123"); // merge-base
     spawnOk(""); // merge-tree empty
     expect(detectLocalConflicts("main", "/repo")).toEqual([]);
@@ -127,6 +141,7 @@ describe("detectLocalConflicts", () => {
 
   it("parses conflicts from merge-tree output", () => {
     spawnOk(); // fetch
+    spawnOk(); // cat-file ok
     spawnOk("abc123\n"); // merge-base
     const mergeTreeOutput = [
       "",
