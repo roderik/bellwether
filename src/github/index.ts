@@ -39,7 +39,6 @@ export {
   type ConflictHunk,
   type FileConflict,
   type UpdateBranchResult,
-  updatePRBranch,
   detectLocalConflicts,
   parseMergeTreeOutput,
   extractConflictHunks,

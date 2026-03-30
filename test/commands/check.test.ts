@@ -444,39 +444,6 @@ describe("checkCommand.run", () => {
     });
   });
 
-  it("returns sync CTA for behind state in default mode", async () => {
-    const c = makeCtx();
-    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
-    mockFetchPRMergeState.mockResolvedValue({
-      state: "open" as const,
-      mergeable: false,
-      mergeableState: "behind",
-    });
-    mockGetCI.mockResolvedValue(ciResult as any);
-    mockGetReviews.mockResolvedValue(reviewsResult);
-    mockFormatReviews.mockReturnValue(reviewsFlat);
-
-    await checkCommand.run(c);
-    const meta = c.ok.mock.calls[0][1] as any;
-    expect(meta.cta.description).toContain("behind base branch");
-    expect(meta.cta.commands[0].command).toBe("sync 1");
-  });
-
-  it("watch exits early with sync CTA when PR is dirty", async () => {
-    const c = makeCtx({ watch: true });
-    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
-    mockFetchPRMergeState.mockResolvedValue(mergeStateDirty);
-
-    await checkCommand.run(c);
-    const data = c.ok.mock.calls[0][0] as any;
-    const meta = c.ok.mock.calls[0][1] as any;
-    expect(meta.cta.commands[0].command).toBe("sync 1");
-    // pr section is returned but ci/reviews are omitted (not fetched)
-    expect(data.pr).toBeDefined();
-    expect(data.ci).toBeUndefined();
-    expect(data.reviews).toBeUndefined();
-  });
-
   it("watch counts unresolved comments correctly", async () => {
     const c = makeCtx({ watch: true });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
