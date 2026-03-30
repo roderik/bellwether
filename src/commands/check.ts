@@ -162,7 +162,9 @@ export const checkCommand = {
     if (opts.watch) {
       const start = Date.now();
       let syncAttempted = false;
+      let pollCount = 0;
       while (true) {
+        pollCount++;
         // Fetch merge state first so headSha is always current before CI fetch
         const mergeState = await fetchPRMergeState(
           ctx.repoInfo.owner,
@@ -184,10 +186,23 @@ export const checkCommand = {
               ctx.proxyFetch,
             );
           } catch (error) {
-            const message = error instanceof Error ? error.message : "Failed to sync branch with base";
+            const message =
+              error instanceof Error ? error.message : "Failed to sync branch with base";
             return c.ok(
-              { pr: { state: mergeState.state, mergeable: mergeState.mergeableState, ready: false, synced: false } },
-              { cta: { description: "Sync failed:", commands: [{ command: `sync ${prNumber}`, description: message }] } },
+              {
+                pr: {
+                  state: mergeState.state,
+                  mergeable: mergeState.mergeableState,
+                  ready: false,
+                  synced: false,
+                },
+              },
+              {
+                cta: {
+                  description: "Sync failed:",
+                  commands: [{ command: `sync ${prNumber}`, description: message }],
+                },
+              },
             );
           }
           // Brief pause so GitHub can enqueue the merge commit before next poll
@@ -262,7 +277,13 @@ export const checkCommand = {
           );
         }
 
-        if ((Date.now() - start) / 1000 >= opts.timeout) {
+        const elapsed = Math.round((Date.now() - start) / 1000);
+        // Progress output so callers know the watch is alive
+        process.stderr.write(
+          `[watch] poll ${pollCount} (${elapsed}s) — ${status.passing}/${status.total} passing, ${status.pending} pending, ${status.failing} failing\n`,
+        );
+
+        if (elapsed >= opts.timeout) {
           return c.ok(
             {
               pr: prSectionWithSync,
@@ -317,7 +338,14 @@ export const checkCommand = {
         ctx.proxyFetch,
       );
       return c.ok(
-        { pr: { state: refreshedMergeState.state, mergeable: refreshedMergeState.mergeableState, ready: false, synced: true } },
+        {
+          pr: {
+            state: refreshedMergeState.state,
+            mergeable: refreshedMergeState.mergeableState,
+            ready: false,
+            synced: true,
+          },
+        },
         {
           cta: {
             description: "Branch synced with base — new CI run triggered:",
