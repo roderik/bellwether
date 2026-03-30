@@ -113,6 +113,8 @@ export interface PRMergeState {
   state: "open" | "closed" | "merged";
   mergeable: boolean | null;
   mergeableState: string;
+  headSha: string;
+  baseBranch: string;
 }
 
 interface RawPRMergeData {
@@ -120,6 +122,8 @@ interface RawPRMergeData {
   merged: boolean;
   mergeable: boolean | null;
   mergeable_state?: string;
+  head: { sha: string };
+  base: { ref: string };
 }
 
 export async function fetchPRMergeState(
@@ -142,5 +146,26 @@ export async function fetchPRMergeState(
     state: pr.merged ? "merged" : (pr.state as "open" | "closed"),
     mergeable: pr.mergeable,
     mergeableState: pr.mergeable_state ?? "unknown",
+    headSha: pr.head.sha,
+    baseBranch: pr.base.ref,
   };
+}
+
+export async function updatePRBranch(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  token: string,
+  proxyFetch: ProxyFetch,
+): Promise<void> {
+  const response = await ghFetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
+    token,
+    proxyFetch,
+    { method: "PUT", body: "{}" },
+  );
+  // 202 = accepted/enqueued, 422 = already up to date or not applicable
+  if (!response.ok && response.status !== 422) {
+    throw new Error(`Failed to update PR branch: ${response.status}`);
+  }
 }

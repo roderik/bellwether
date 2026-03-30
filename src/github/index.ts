@@ -19,6 +19,7 @@ export {
   findPRForBranch,
   listOpenPRs,
   fetchPRMergeState,
+  updatePRBranch,
 } from "./repo.js";
 
 export {
