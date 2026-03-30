@@ -164,14 +164,22 @@ export const checkCommand = {
     if (opts.watch) {
       const start = Date.now();
       while (true) {
-        const [mergeState, { status, flat: ciFlat }, reviewData] = await Promise.all([
-          fetchPRMergeState(
-            ctx.repoInfo.owner,
-            ctx.repoInfo.repo,
-            prNumber,
-            ctx.token,
-            ctx.proxyFetch,
-          ),
+        // Fetch merge state first — CI results are irrelevant until PR is syncable
+        const mergeState = await fetchPRMergeState(
+          ctx.repoInfo.owner,
+          ctx.repoInfo.repo,
+          prNumber,
+          ctx.token,
+          ctx.proxyFetch,
+        );
+
+        const syncCTA = buildSyncCTA(mergeState.mergeableState);
+        if (syncCTA) {
+          const prSection = buildPRSection(mergeState, { failing: 0, pending: 0 } as CIStatus, 0);
+          return c.ok({ pr: prSection }, { cta: syncCTA });
+        }
+
+        const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
           getCISection(ctx, prNumber, headSha),
           getReviewsList(ctx, prNumber, filterOpts),
         ]);
@@ -181,12 +189,6 @@ export const checkCommand = {
           (cm) => !(cm.isResolved || cm.hasHumanReply),
         ).length;
         const prSection = buildPRSection(mergeState, status, unresolvedCount);
-
-        // Exit early if PR needs syncing — CI results are irrelevant until resolved
-        const syncCTA = buildSyncCTA(mergeState.mergeableState);
-        if (syncCTA) {
-          return c.ok({ pr: prSection, ci: ciFlat, reviews: reviewsFlat }, { cta: syncCTA });
-        }
 
         if (status.failing === 0 && status.pending === 0) {
           return c.ok({

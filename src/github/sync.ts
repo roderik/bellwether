@@ -73,6 +73,7 @@ export async function updatePRBranch(
 export function detectLocalConflicts(
   baseBranch: string,
   repoRoot: string,
+  prHeadRef = "HEAD",
   maxHunksPerFile = 3,
 ): FileConflict[] {
   const fetchResult = spawnSync("git", ["fetch", "--quiet", "origin", baseBranch], {
@@ -85,7 +86,7 @@ export function detectLocalConflicts(
 
   const mergeBaseResult = spawnSync(
     "git",
-    ["merge-base", "HEAD", `origin/${baseBranch}`],
+    ["merge-base", prHeadRef, `origin/${baseBranch}`],
     { cwd: repoRoot, encoding: "utf-8" },
   );
   if (mergeBaseResult.status !== 0 || !mergeBaseResult.stdout.trim()) {
@@ -97,7 +98,7 @@ export function detectLocalConflicts(
   // Exit code is 0 even when conflicts exist.
   const mergeTreeResult = spawnSync(
     "git",
-    ["merge-tree", baseCommit, "HEAD", `origin/${baseBranch}`],
+    ["merge-tree", baseCommit, prHeadRef, `origin/${baseBranch}`],
     { cwd: repoRoot, encoding: "utf-8", maxBuffer: 4 * 1024 * 1024 },
   );
 
