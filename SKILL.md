@@ -18,7 +18,7 @@ Self-contained cycle: watch CI → fix failures → address reviews → watch ag
 - NEVER use `gh api`, `gh pr checks`, `gh pr view --json`, `gh api repos/*/check-runs`, or any manual GitHub API calls to check CI or review status.
 - NEVER use `sleep` to wait for CI. The `--watch` flag handles waiting internally.
 - NEVER parse review comments manually via `gh api`. The bellwether CLI returns them in structured format.
-- The bellwether CLI is an npm package — `bellwether` ensures it's installed and runs it.
+- If `bellwether` is not found, install it first: `npm install -g bellwether`
 - Every interaction with GitHub goes through the bellwether CLI. Zero manual GitHub API usage.
 
 ## The Loop
