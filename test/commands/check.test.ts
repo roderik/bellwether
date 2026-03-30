@@ -468,6 +468,48 @@ describe("checkCommand.run", () => {
     expect(result.pr.mergeable).toBe("behind");
   });
 
+  it("watch returns immediately with unresolved reviews even while CI is pending", async () => {
+    const c = makeCtx({ watch: true });
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
+    mockGetCI.mockResolvedValue(ciResult as any); // 1 pending, 0 failing
+    mockGetReviews.mockResolvedValue({
+      comments: [{ id: 1, isResolved: false, hasHumanReply: false, hasAnyReply: false } as any],
+      total: 1,
+    });
+    mockFormatReviews.mockReturnValue({ total: "1 unresolved, 1 unanswered" });
+
+    await checkCommand.run(c);
+    const data = c.ok.mock.calls[0][0] as any;
+    expect(data.pr.ready).toBe(false);
+    expect(data.reviews.total).toBe("1 unresolved, 1 unanswered");
+    const meta = c.ok.mock.calls[0][1] as any;
+    expect(meta.cta.description).toContain("Unresolved");
+  });
+
+  it("watch returns immediately with CI failures even while some checks pending", async () => {
+    const c = makeCtx({ watch: true });
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
+    mockGetCI.mockResolvedValue({
+      status: {
+        ...ciResult.status,
+        pending: 1,
+        failing: 1,
+        failures: [{ name: "lint", conclusion: "failure", html_url: "u", log: "error" }],
+      },
+      flat: { ...ciResult.flat, "FAIL lint": "error" },
+    } as any);
+    mockGetReviews.mockResolvedValue(reviewsResult);
+    mockFormatReviews.mockReturnValue(reviewsFlat);
+
+    await checkCommand.run(c);
+    const data = c.ok.mock.calls[0][0] as any;
+    expect(data.ci.allPassing).toBe(false);
+    const meta = c.ok.mock.calls[0][1] as any;
+    expect(meta.cta.description).toContain("Failed");
+  });
+
   it("watch counts unresolved comments correctly", async () => {
     const c = makeCtx({ watch: true });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });

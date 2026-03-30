@@ -53,12 +53,15 @@ interface CheckCommandContext {
 
 export const checkCommand = {
   description: "Show CI status and review comments for a PR",
-  hint: "Combines CI checks and review comments. Use --reply and --detail for review actions. With --watch, polls until CI completes.",
+  hint: "Combines CI checks and review comments. Use --reply and --detail for review actions. With --watch, returns immediately when there is actionable work (CI failures, unresolved reviews), only polls while CI is pending with nothing to do.",
   args: z.object({
     pr: z.coerce.number().optional().describe("PR number (auto-detects from branch)"),
   }),
   options: z.object({
-    watch: z.boolean().default(false).describe("Poll until CI completes"),
+    watch: z
+      .boolean()
+      .default(false)
+      .describe("Poll until actionable: returns on CI failure, unresolved reviews, or all passing"),
     interval: z.coerce.number().default(30).describe("Poll interval in seconds"),
     timeout: z.coerce.number().default(1800).describe("Timeout in seconds"),
     unresolved: z.boolean().default(false).describe("Show only unresolved comments"),
@@ -158,7 +161,10 @@ export const checkCommand = {
       humansOnly: opts.humansOnly,
     };
 
-    // Watch mode — poll until CI terminal
+    // Watch mode — poll until there is actionable work or CI reaches terminal state.
+    // Returns immediately when: CI fails, unresolved reviews exist, merge conflict,
+    // all passing, or timeout. Only keeps polling when CI is pending AND there is
+    // nothing actionable (no failures, no unresolved reviews).
     if (opts.watch) {
       const start = Date.now();
       let syncAttempted = false;
@@ -251,7 +257,8 @@ export const checkCommand = {
         const prSection = buildPRSection(mergeState, status, unresolvedCount);
         const prSectionWithSync = syncAttempted ? { ...prSection, synced: true } : prSection;
 
-        if (status.failing === 0 && status.pending === 0) {
+        // Terminal: all passing, no unresolved reviews
+        if (status.failing === 0 && status.pending === 0 && unresolvedCount === 0) {
           return c.ok({
             pr: prSectionWithSync,
             ci: { ...ciFlat, allPassing: true },
@@ -259,7 +266,8 @@ export const checkCommand = {
           });
         }
 
-        if (status.failing > 0 && status.pending === 0) {
+        // Actionable: CI failures exist — return so caller can fix them
+        if (status.failing > 0) {
           return c.ok(
             {
               pr: prSectionWithSync,
@@ -277,8 +285,27 @@ export const checkCommand = {
           );
         }
 
+        // Actionable: unresolved reviews — return so caller can address them
+        if (unresolvedCount > 0) {
+          return c.ok(
+            {
+              pr: prSectionWithSync,
+              ci: ciFlat,
+              reviews: reviewsFlat,
+            },
+            {
+              cta: {
+                description: "Unresolved review comments:",
+                commands: [
+                  { command: "check --unresolved", description: "Show unresolved reviews" },
+                ],
+              },
+            },
+          );
+        }
+
+        // Nothing actionable, CI still pending — keep polling
         const elapsed = Math.round((Date.now() - start) / 1000);
-        // Progress output so callers know the watch is alive
         process.stderr.write(
           `[watch] poll ${pollCount} (${elapsed}s) — ${status.passing}/${status.total} passing, ${status.pending} pending, ${status.failing} failing\n`,
         );
