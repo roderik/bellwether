@@ -109,14 +109,20 @@ export const syncCommand = {
 
     // Attempt server-side update (handles "behind" and other states)
     const expectedHeadSha = prData.head.sha;
-    const result = await updatePRBranch(
-      ctx.repoInfo.owner,
-      ctx.repoInfo.repo,
-      prNumber,
-      expectedHeadSha,
-      ctx.token,
-      ctx.proxyFetch,
-    );
+    let result;
+    try {
+      result = await updatePRBranch(
+        ctx.repoInfo.owner,
+        ctx.repoInfo.repo,
+        prNumber,
+        expectedHeadSha,
+        ctx.token,
+        ctx.proxyFetch,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update PR branch";
+      return c.error({ message });
+    }
 
     if (result.updated) {
       // Re-fetch PR so mergeableState reflects the post-sync state

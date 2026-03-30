@@ -200,6 +200,20 @@ describe("sync command — behind state, sync succeeds", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Behind — updatePRBranch throws
+// ---------------------------------------------------------------------------
+
+describe("sync command — behind state, updatePRBranch throws", () => {
+  it("returns error when updatePRBranch throws", async () => {
+    makePRFetch("behind");
+    mockUpdatePRBranch.mockRejectedValueOnce(new Error("network timeout"));
+    const c = makeCtx();
+    await syncCommand.run(c);
+    expect(c.error).toHaveBeenCalledWith({ message: "network timeout" });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Behind — sync fails (unexpected conflict on API side)
 // ---------------------------------------------------------------------------
 

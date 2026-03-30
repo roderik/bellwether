@@ -59,8 +59,16 @@ export async function updatePRBranch(
   }
 
   if (response.status === 422) {
-    const data = (await response.json()) as { message: string };
-    const message = data.message;
+    let message = "Branch update failed";
+    const text = await response.text();
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as { message?: string } | null;
+        message = typeof parsed?.message === "string" ? parsed.message : text;
+      } catch {
+        message = text;
+      }
+    }
     const lower = message.toLowerCase();
     const alreadyUpToDate =
       lower.includes("update is not required") ||

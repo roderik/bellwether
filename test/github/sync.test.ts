@@ -84,6 +84,56 @@ describe("updatePRBranch", () => {
     expect(result).toEqual({ updated: false, message: "merge conflict" });
   });
 
+  it("returns updated=false on 422 with non-JSON body", async () => {
+    const proxyFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      headers: { get: () => null },
+      async text() {
+        return "Unprocessable Entity";
+      },
+      async json() {
+        throw new Error("not json");
+      },
+    });
+    const result = await updatePRBranch("o", "r", 1, undefined, "tok", proxyFetch);
+    expect(result).toEqual({ updated: false, message: "Unprocessable Entity" });
+  });
+
+  it("returns updated=false on 422 with null message in JSON body", async () => {
+    const proxyFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      headers: { get: () => null },
+      async text() {
+        return JSON.stringify({ message: null });
+      },
+      async json() {
+        return { message: null };
+      },
+    });
+    const result = await updatePRBranch("o", "r", 1, undefined, "tok", proxyFetch);
+    expect(result.updated).toBe(false);
+    // message not a string → falls back to raw text
+    expect(result.message).toBe('{"message":null}');
+  });
+
+  it("returns generic message on 422 with empty body", async () => {
+    const proxyFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      headers: { get: () => null },
+      async text() {
+        return "";
+      },
+      async json() {
+        return null;
+      },
+    });
+    const result = await updatePRBranch("o", "r", 1, undefined, "tok", proxyFetch);
+    expect(result).toEqual({ updated: false, message: "Branch update failed" });
+  });
+
   it("throws on unexpected status", async () => {
     const proxyFetch = makeProxyFetch(500, {});
     await expect(updatePRBranch("o", "r", 1, undefined, "tok", proxyFetch)).rejects.toThrow(
