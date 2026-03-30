@@ -32,25 +32,6 @@ function buildPRSection(
   };
 }
 
-function buildSyncCTA(
-  mergeableState: string,
-  prNumber: number,
-): { description: string; commands: { command: string; description: string }[] } | undefined {
-  if (mergeableState === "dirty") {
-    return {
-      description: "PR has merge conflicts:",
-      commands: [{ command: `sync ${prNumber}`, description: "Show conflict details" }],
-    };
-  }
-  if (mergeableState === "behind") {
-    return {
-      description: "PR is behind base branch:",
-      commands: [{ command: `sync ${prNumber}`, description: "Sync with base branch" }],
-    };
-  }
-  return undefined;
-}
-
 interface CheckCommandContext {
   var: { ctx: Context };
   args: { pr?: number };
@@ -194,13 +175,21 @@ export const checkCommand = {
         // Branch behind base — auto-sync once, then continue polling
         if (mergeState.mergeableState === "behind" && !syncAttempted) {
           syncAttempted = true;
-          await updatePRBranch(
-            ctx.repoInfo.owner,
-            ctx.repoInfo.repo,
-            prNumber,
-            ctx.token,
-            ctx.proxyFetch,
-          );
+          try {
+            await updatePRBranch(
+              ctx.repoInfo.owner,
+              ctx.repoInfo.repo,
+              prNumber,
+              ctx.token,
+              ctx.proxyFetch,
+            );
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to sync branch with base";
+            return c.ok(
+              { pr: { state: mergeState.state, mergeable: mergeState.mergeableState, ready: false, synced: false } },
+              { cta: { description: "Sync failed:", commands: [{ command: `sync ${prNumber}`, description: message }] } },
+            );
+          }
           // Brief pause so GitHub can enqueue the merge commit before next poll
           await new Promise<void>((r) => setTimeout(r, 5000));
           continue;
@@ -308,7 +297,19 @@ export const checkCommand = {
     );
     // Branch behind base — sync first; CI/reviews would be stale after sync
     if (mergeState.mergeableState === "behind") {
-      await updatePRBranch(
+      try {
+        await updatePRBranch(
+          ctx.repoInfo.owner,
+          ctx.repoInfo.repo,
+          prNumber,
+          ctx.token,
+          ctx.proxyFetch,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to sync branch with base";
+        return c.error({ message });
+      }
+      const refreshedMergeState = await fetchPRMergeState(
         ctx.repoInfo.owner,
         ctx.repoInfo.repo,
         prNumber,
@@ -316,7 +317,7 @@ export const checkCommand = {
         ctx.proxyFetch,
       );
       return c.ok(
-        { pr: { state: mergeState.state, mergeable: mergeState.mergeableState, ready: false, synced: true } },
+        { pr: { state: refreshedMergeState.state, mergeable: refreshedMergeState.mergeableState, ready: false, synced: true } },
         {
           cta: {
             description: "Branch synced with base — new CI run triggered:",
@@ -365,13 +366,11 @@ export const checkCommand = {
     ).length;
     const prSection = buildPRSection(mergeState, status, unresolvedCount);
 
-    const defaultSyncCTA = buildSyncCTA(mergeState.mergeableState, prNumber);
     return c.ok(
       { pr: prSection, ci: ciFlat, reviews: reviewsFlat },
       {
         cta:
-          defaultSyncCTA ??
-          (status.pending > 0
+          status.pending > 0
             ? {
                 description: "Checks still running:",
                 commands: [{ command: "check --watch", description: "Watch until complete" }],
@@ -383,7 +382,7 @@ export const checkCommand = {
                     { command: "check --unresolved", description: "Show unresolved reviews" },
                   ],
                 }
-              : undefined),
+              : undefined,
       },
     );
   },

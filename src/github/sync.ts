@@ -60,7 +60,14 @@ export async function updatePRBranch(
 
   if (response.status === 422) {
     const data = (await response.json()) as { message: string };
-    return { updated: false, message: data.message };
+    const message = data.message;
+    const lower = message.toLowerCase();
+    const alreadyUpToDate =
+      lower.includes("update is not required") ||
+      lower.includes("no commits between") ||
+      lower.includes("already up to date") ||
+      lower.includes("up to date");
+    return { updated: alreadyUpToDate, message };
   }
 
   throw new Error(`update-branch API returned unexpected status: ${response.status}`);

@@ -119,8 +119,23 @@ export const syncCommand = {
     );
 
     if (result.updated) {
+      // Re-fetch PR so mergeableState reflects the post-sync state
+      let postSyncMergeableState = mergeableState;
+      try {
+        const postSyncResponse = await ghFetch(
+          `https://api.github.com/repos/${ctx.repoInfo.owner}/${ctx.repoInfo.repo}/pulls/${prNumber}`,
+          ctx.token,
+          ctx.proxyFetch,
+        );
+        if (postSyncResponse.ok) {
+          const postSyncData = (await postSyncResponse.json()) as RawPRData;
+          postSyncMergeableState = postSyncData.mergeable_state ?? mergeableState;
+        }
+      } catch {
+        // Ignore re-fetch errors; fall back to pre-sync mergeableState
+      }
       return c.ok(
-        { synced: true, message: result.message, mergeableState },
+        { synced: true, message: result.message, mergeableState: postSyncMergeableState },
         {
           cta: {
             description: "Branch synced. Monitor CI:",
