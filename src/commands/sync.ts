@@ -83,7 +83,7 @@ export const syncCommand = {
 
     // Conflicts present — skip update-branch (it will 422) and report details
     if (mergeableState === "dirty") {
-      const conflicts = c.options.detectConflicts ? getConflicts(baseBranch) : [];
+      const conflicts = c.options.detectConflicts ? getConflicts(baseBranch, prData.head.sha) : [];
       return c.ok(
         {
           synced: false,
@@ -108,11 +108,12 @@ export const syncCommand = {
     }
 
     // Attempt server-side update (handles "behind" and other states)
+    const expectedHeadSha = prData.head.sha ?? headSha;
     const result = await updatePRBranch(
       ctx.repoInfo.owner,
       ctx.repoInfo.repo,
       prNumber,
-      headSha,
+      expectedHeadSha,
       ctx.token,
       ctx.proxyFetch,
     );
@@ -130,7 +131,7 @@ export const syncCommand = {
     }
 
     // Update failed — try local conflict detection as fallback
-    const conflicts = c.options.detectConflicts ? getConflicts(baseBranch) : [];
+    const conflicts = c.options.detectConflicts ? getConflicts(baseBranch, prData.head.sha) : [];
     return c.ok({
       synced: false,
       message: result.message,
@@ -140,10 +141,10 @@ export const syncCommand = {
   },
 };
 
-function getConflicts(baseBranch: string): FileConflict[] {
+function getConflicts(baseBranch: string, prHeadSha: string): FileConflict[] {
   const repoRoot = getRepoRoot();
   if (!repoRoot) {
     return [];
   }
-  return detectLocalConflicts(baseBranch, repoRoot);
+  return detectLocalConflicts(baseBranch, repoRoot, prHeadSha);
 }

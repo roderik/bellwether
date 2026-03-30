@@ -87,7 +87,7 @@ describe("updatePRBranch", () => {
   it("throws on unexpected status", async () => {
     const proxyFetch = makeProxyFetch(500, {});
     await expect(updatePRBranch("o", "r", 1, undefined, "tok", proxyFetch)).rejects.toThrow(
-      "unexpected status: 500",
+      "update-branch API returned unexpected status: 500",
     );
   });
 });

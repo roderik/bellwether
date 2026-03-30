@@ -165,7 +165,7 @@ describe("sync command — behind state, sync succeeds", () => {
     });
     const c = makeCtx();
     await syncCommand.run(c);
-    expect(mockUpdatePRBranch).toHaveBeenCalledWith("o", "r", 42, "abc123", "tok", expect.any(Function));
+    expect(mockUpdatePRBranch).toHaveBeenCalledWith("o", "r", 42, "abc", "tok", expect.any(Function));
     expect(c.ok).toHaveBeenCalledWith(
       expect.objectContaining({ synced: true, message: "Branch was successfully updated." }),
       expect.objectContaining({ cta: expect.objectContaining({ description: expect.stringContaining("synced") }) }),
