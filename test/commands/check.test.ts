@@ -305,18 +305,15 @@ describe("checkCommand.run", () => {
     });
   });
 
-  it("includes conflict info when mergeableState is dirty", async () => {
+  it("includes conflict info when mergeableState is dirty (no CI/reviews fetch)", async () => {
     const c = makeCtx();
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
     mockFetchPRMergeState.mockResolvedValue(mergeStateDirty);
-    mockGetCI.mockResolvedValue({
-      status: { ...ciResult.status, pending: 0, failing: 0 },
-      flat: ciResult.flat,
-    } as any);
-    mockGetReviews.mockResolvedValue(reviewsResult);
-    mockFormatReviews.mockReturnValue(reviewsFlat);
 
     await checkCommand.run(c);
+    // CI and reviews should NOT be fetched for dirty state
+    expect(mockGetCI).not.toHaveBeenCalled();
+    expect(mockGetReviews).not.toHaveBeenCalled();
     const data = c.ok.mock.calls[0][0] as any;
     expect(data.pr.state).toBe("open");
     expect(data.pr.mergeable).toBe("dirty");
@@ -327,40 +324,30 @@ describe("checkCommand.run", () => {
     });
   });
 
-  it("calls updatePRBranch and returns synced=true when branch is behind", async () => {
+  it("calls updatePRBranch and returns synced=true when branch is behind (no CI/reviews fetch)", async () => {
     const c = makeCtx();
-    const mergeStateBehind = {
-      ...mergeStateClean,
-      mergeableState: "behind",
-    };
+    const mergeStateBehind = { ...mergeStateClean, mergeableState: "behind" };
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
     mockFetchPRMergeState.mockResolvedValue(mergeStateBehind);
-    mockGetCI.mockResolvedValue({
-      status: { ...ciResult.status, pending: 0, failing: 0 },
-      flat: ciResult.flat,
-    } as any);
-    mockGetReviews.mockResolvedValue(reviewsResult);
-    mockFormatReviews.mockReturnValue(reviewsFlat);
     mockUpdatePRBranch.mockResolvedValue(undefined);
 
     await checkCommand.run(c);
+    // CI and reviews should NOT be fetched — they'd be stale after sync
+    expect(mockGetCI).not.toHaveBeenCalled();
+    expect(mockGetReviews).not.toHaveBeenCalled();
     expect(mockUpdatePRBranch).toHaveBeenCalledWith("o", "r", 1, "tok", expect.any(Function));
     const data = c.ok.mock.calls[0][0] as any;
     expect(data.pr.synced).toBe(true);
   });
 
-  it("watch exits with conflict info when mergeableState is dirty", async () => {
+  it("watch exits with conflict info immediately (no CI/reviews fetch) when dirty", async () => {
     const c = makeCtx({ watch: true });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
     mockFetchPRMergeState.mockResolvedValue(mergeStateDirty);
-    mockGetCI.mockResolvedValue({
-      status: { ...ciResult.status, pending: 0, failing: 0 },
-      flat: ciResult.flat,
-    } as any);
-    mockGetReviews.mockResolvedValue(reviewsResult);
-    mockFormatReviews.mockReturnValue(reviewsFlat);
 
     const result = (await checkCommand.run(c)) as any;
+    expect(mockGetCI).not.toHaveBeenCalled();
+    expect(mockGetReviews).not.toHaveBeenCalled();
     expect(result.pr.mergeable).toBe("dirty");
     expect(result.pr.conflict).toEqual({
       base: "main",
