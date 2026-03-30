@@ -213,12 +213,16 @@ describe("fetchPRMergeState", () => {
       merged: false,
       mergeable: true,
       mergeable_state: "clean",
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result).toEqual({
       state: "open",
       mergeable: true,
       mergeableState: "clean",
+      headSha: "abc123",
+      baseBranch: "main",
     });
   });
 
@@ -228,6 +232,8 @@ describe("fetchPRMergeState", () => {
       merged: true,
       mergeable: false,
       mergeable_state: "unknown",
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result.state).toBe("merged");
@@ -239,6 +245,8 @@ describe("fetchPRMergeState", () => {
       merged: false,
       mergeable: null,
       mergeable_state: "unknown",
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result.state).toBe("closed");
@@ -250,6 +258,8 @@ describe("fetchPRMergeState", () => {
       merged: false,
       mergeable: null,
       mergeable_state: "unknown",
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result.mergeable).toBeNull();
@@ -262,6 +272,8 @@ describe("fetchPRMergeState", () => {
       merged: false,
       mergeable: false,
       mergeable_state: "dirty",
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result.mergeableState).toBe("dirty");
@@ -273,6 +285,8 @@ describe("fetchPRMergeState", () => {
       state: "open",
       merged: false,
       mergeable: null,
+      head: { sha: "abc123" },
+      base: { ref: "main" },
     });
     const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
     expect(result.mergeableState).toBe("unknown");
