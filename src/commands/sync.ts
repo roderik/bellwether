@@ -48,7 +48,7 @@ export const syncCommand = {
     { options: { detectConflicts: false } },
   ],
   output: z.object({
-    synced: z.boolean().describe("Whether the branch was updated"),
+    synced: z.boolean().describe("Whether the branch is up to date with its base after attempting sync"),
     message: z.string().describe("Status message"),
     mergeableState: z.string().optional().describe("Current PR mergeable state"),
     conflicts: z

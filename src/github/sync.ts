@@ -76,9 +76,9 @@ export function detectLocalConflicts(
   prHeadRef = "HEAD",
   maxHunksPerFile = 3,
 ): FileConflict[] {
-  // Guard against option injection: branch names starting with '-' would be
+  // Guard against option injection: refs starting with '-' would be
   // interpreted as git options.
-  if (baseBranch.startsWith("-")) {
+  if (baseBranch.startsWith("-") || prHeadRef.startsWith("-")) {
     return [];
   }
 
