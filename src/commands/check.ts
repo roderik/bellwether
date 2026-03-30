@@ -61,7 +61,9 @@ export const checkCommand = {
     watch: z
       .boolean()
       .default(false)
-      .describe("Poll until actionable: returns on CI failure, unresolved reviews, or all passing"),
+      .describe(
+        "Poll until actionable: returns on CI failure, unresolved reviews, all passing, merge conflict, or timeout",
+      ),
     interval: z.coerce.number().default(30).describe("Poll interval in seconds"),
     timeout: z.coerce.number().default(1800).describe("Timeout in seconds"),
     unresolved: z.boolean().default(false).describe("Show only unresolved comments"),
@@ -277,9 +279,7 @@ export const checkCommand = {
             {
               cta: {
                 description: "Failed checks detected:",
-                commands: [
-                  { command: "check --unresolved", description: "Show unresolved reviews" },
-                ],
+                commands: [{ command: "check", description: "Re-check after fixing" }],
               },
             },
           );
@@ -290,7 +290,7 @@ export const checkCommand = {
           return c.ok(
             {
               pr: prSectionWithSync,
-              ci: ciFlat,
+              ci: { ...ciFlat, allPassing: status.pending === 0 && status.failing === 0 },
               reviews: reviewsFlat,
             },
             {
