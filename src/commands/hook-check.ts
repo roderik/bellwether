@@ -36,7 +36,7 @@ export const hookCheckCommand = {
           hookSpecificOutput: {
             hookEventName: input.hook_event_name ?? "PostToolUse",
             additionalContext:
-              "PR pushed. Run `npx -y bellwether check --watch` to monitor CI and reviews until merge-ready.",
+              "PR pushed. Run `npx bellwether check --watch` to monitor CI and reviews until merge-ready.",
           },
         });
       }

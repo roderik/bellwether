@@ -25,10 +25,10 @@ bellwether closes that loop. It watches CI directly from your terminal (or your 
 
 ```bash
 # As a Claude Code skill (recommended for AI agents)
-npx -y bellwether skills add
+npx bellwether skills add
 
 # Or run it directly — no install needed
-npx -y bellwether check
+npx bellwether check
 ```
 
 ## Hooks
@@ -37,10 +37,10 @@ Bellwether can install PostToolUse hooks into Claude Code (`~/.claude/settings.j
 
 ```bash
 # Install hooks into Claude Code and Codex
-npx -y bellwether hooks add
+npx bellwether hooks add
 
 # PostToolUse hook handler (called automatically by Claude Code / Codex)
-npx -y bellwether hooks check --format json
+npx bellwether hooks check --format json
 ```
 
 `hooks add` is idempotent — re-running it replaces any existing bellwether hook entries with the latest configuration.
@@ -49,22 +49,22 @@ npx -y bellwether hooks check --format json
 
 ```bash
 # Watch CI + review comments + merge state
-npx -y bellwether check --watch
+npx bellwether check --watch
 
 # One-shot status check
-npx -y bellwether check
+npx bellwether check
 
 # Show only unresolved review comments
-npx -y bellwether check --unresolved
+npx bellwether check --unresolved
 
 # Reply to a review comment and resolve it
-npx -y bellwether check --reply "456:Fixed in abc1234" --resolve
+npx bellwether check --reply "456:Fixed in abc1234" --resolve
 
 # Full detail on a specific comment
-npx -y bellwether check --detail 456
+npx bellwether check --detail 456
 
 # Full help
-npx -y bellwether check --help
+npx bellwether check --help
 ```
 
 ## Output
@@ -110,7 +110,7 @@ It queries GitHub's Check Runs API directly, filters job logs down to signal (co
 bellwether ships as a Claude Code skill. Once installed, your agent gets a `SKILL.md` covering the full loop: watch CI → fix failures → address reviews → push → repeat until `pr.ready = true`.
 
 ```bash
-npx -y bellwether skills add
+npx bellwether skills add
 ```
 
 The skill is also available on the [Claude Code marketplace](https://github.com/roderik/bellwether/blob/main/marketplace.json).
