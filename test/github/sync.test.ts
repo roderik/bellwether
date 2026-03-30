@@ -106,6 +106,11 @@ describe("detectLocalConflicts", () => {
     expect(mockSpawnSync).not.toHaveBeenCalled();
   });
 
+  it("returns [] when prHeadRef starts with -", () => {
+    expect(detectLocalConflicts("main", "/repo", "-evil")).toEqual([]);
+    expect(mockSpawnSync).not.toHaveBeenCalled();
+  });
+
   it("returns [] when git fetch fails", () => {
     spawnFail();
     expect(detectLocalConflicts("main", "/repo")).toEqual([]);
