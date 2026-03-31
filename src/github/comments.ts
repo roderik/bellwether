@@ -394,22 +394,38 @@ export async function replyToComment(
     },
   );
 
+  if (!response.ok && response.status !== 404) {
+    const error = await response.text();
+    throw new Error(`Failed to reply: ${response.status} - ${error}`);
+  }
+
   if (!response.ok) {
-    // Fallback: consolidate into a single tracking comment with bullet list
+    // 404 means this is an issue comment, not a review comment.
+    // Consolidate into a single tracking comment with bullet list.
     const existingComments = await fetchAllPages<RawIssueComment>(
       `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments?per_page=100`,
       token,
       proxyFetch,
     );
 
-    const trackingComment = existingComments.find((c) =>
-      c.body.startsWith(TRACKING_COMMENT_MARKER),
-    );
+    // Pick the most recently updated tracking comment if multiple exist
+    const trackingComment = existingComments
+      .filter((c) => c.body.startsWith(TRACKING_COMMENT_MARKER))
+      .toSorted((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
     const newBullet = `- Re: comment ${commentId} — ${message}`;
 
     if (trackingComment) {
-      // Append bullet to existing tracking comment
-      const updatedBody = `${trackingComment.body}\n${newBullet}`;
+      // Re-fetch the latest body to avoid stale read-modify-write
+      const freshResponse = await ghFetch(
+        `https://api.github.com/repos/${owner}/${repo}/issues/comments/${trackingComment.id}`,
+        token,
+        proxyFetch,
+      );
+      const freshBody = freshResponse.ok
+        ? ((await freshResponse.json()) as RawIssueComment).body
+        : trackingComment.body;
+
+      const updatedBody = `${freshBody}\n${newBullet}`;
       const updateResponse = await ghFetch(
         `https://api.github.com/repos/${owner}/${repo}/issues/comments/${trackingComment.id}`,
         token,
