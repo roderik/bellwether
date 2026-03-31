@@ -1,0 +1,27 @@
+skills/bellwether/SKILL.md
+  4038a4f4e5232105 105-106,111
+SKILL.md
+  4038a4f4e5232105 105-106,111
+src/commands/check.ts
+  4038a4f4e5232105 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "914574da37d6319a81ed8b0d180e5ecee35b9a40",
+  "prompts": {
+    "4038a4f4e5232105": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85cabb13-df7a-4980-95a7-41db0127c2fe",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 5,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}
