@@ -6,11 +6,14 @@ description: >-
   merge-ready. Use when the user wants to keep a PR green, auto-fix CI, resolve
   review comments, or says "get this merged".
 user-invocable: true
+allowed-tools: Bash(npx bellwether *) Bash(bunx bellwether *) Bash(bellwether *) Bash(npm install -g bellwether) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git status) Bash(git diff *) Bash(git log *) Bash(bun *) Bash(npm *) Read Edit Write Glob Grep
 ---
 
 # Bellwether — Drive PR to Merge-Ready
 
-Self-contained cycle: watch CI → fix failures → address reviews → watch again → until merge-ready.
+Self-contained cycle: watch CI -> fix failures -> address reviews -> watch again -> until merge-ready.
+
+IMPORTANT: Execute ALL work in the main thread. Do NOT use the Agent tool, Task tool, or spawn sub-agents. Track all state in your working memory (context window). This skill runs as a sequential loop — you fetch, evaluate, fix, commit, reply, then loop.
 
 ## Critical: Use the bellwether CLI
 
@@ -25,12 +28,12 @@ Self-contained cycle: watch CI → fix failures → address reviews → watch ag
 
 ```
 1. bellwether check --watch        (returns when actionable: CI failures, unresolved reviews, all passing, or timeout; DO NOT substitute with gh/GitHub API calls — use this exact command)
-2. If pr.ready=true → done, report "merge-ready"
-3. If pr.state=merged|closed → done, report status
-4. If CI failures → fix them (Step 2), push, go to 1
-5. If unresolved reviews → address them (Step 3), push, go to 1
-6. If pr.mergeable=dirty|behind → /sync, push, go to 1
-7. If timed out → go to 1 (restart watch)
+2. If pr.ready=true -> done, report "merge-ready"
+3. If pr.state=merged|closed -> done, report status
+4. If CI failures -> fix them (Phase 1), push, go to 1
+5. If unresolved reviews -> address them (Phase 2), push, go to 1
+6. If pr.mergeable=dirty|behind -> /sync, push, go to 1
+7. If timed out -> go to 1 (restart watch)
 ```
 
 ## What `bellwether check --watch` returns
@@ -41,7 +44,7 @@ Three sections:
 - **ci** — SHA, check summary, and for each failing check: the filtered error log with file paths and line numbers
 - **reviews** — unresolved review comments with full body, file path, and line number
 
-## Step 2: Fix CI failures
+## Phase 1: Fix CI failures
 
 For each `FAIL` key in the CI section:
 
@@ -49,29 +52,35 @@ For each `FAIL` key in the CI section:
 2. **Fix the code** — minimal change that resolves the root cause.
 3. **Verify locally** — run the same check that failed.
 4. **Stage, commit, push** — stage files by name (never `git add -A`).
-5. **Go to step 1** — restart the watch. New CI runs, new bot comments may arrive.
+5. **Go to step 1 of the loop** — restart the watch. New CI runs, new bot comments may arrive.
 
-## Step 3: Address review comments
+DO NOT proceed to Phase 2 until CI is green. Fix CI first, push, restart the watch.
 
-For each `REVIEW` key in the reviews section:
+## Phase 2: Address review comments
 
-### Classify
+Process ALL comments in a single batch before replying to any of them.
+
+### Step A: Evaluate all comments
+
+Read every `REVIEW` key. For each one, classify it and track the comment ID and planned action in your working memory:
 
 **Bot comments** (CodeRabbit, Copilot, Cursor Bugbot):
-- **True positive** — real bug → fix the code
-- **False positive** — bot doesn't understand the pattern → reply explaining why, won't fix
+- **True positive** — real bug -> will fix
+- **False positive** — bot doesn't understand the pattern -> will reply explaining why, won't fix
 - **Uncertain** — default to fixing it. Only ask the user if the fix would require a major architectural change.
 
 **Human comments**:
-- **Actionable** — fix the code
-- **Discussion/opinion** — fix it using your best judgment. Only ask the user if it's a product decision you genuinely cannot make.
-- **Already addressed** — reply only
+- **Actionable** — will fix
+- **Discussion/opinion** — will fix using best judgment. Only ask the user if it's a product decision you genuinely cannot make.
+- **Already addressed** — will reply only
 
-### Fix and commit
+### Step B: Fix and commit
 
-Fix all true positives and actionable items in a single commit. Verify locally, push.
+Fix all true positives and actionable items. Verify locally. Stage files by name, commit once, push.
 
-### Reply
+DO NOT start Step C until the commit exists and is pushed.
+
+### Step C: Reply to all comments
 
 For inline code review comments (with file path), reply individually with `--resolve`:
 
@@ -89,7 +98,7 @@ Addressed review findings in <hash>:
 
 Every comment gets a response. ALWAYS use `--resolve` on every reply — including won't-fix and false-positive responses. All threads must be resolved to reach pr.ready=true.
 
-After all replies, go to step 1 — restart the watch.
+DO NOT restart the watch until ALL replies are posted. After all replies, go to step 1 of the loop.
 
 ## Principles
 
@@ -99,3 +108,4 @@ After all replies, go to step 1 — restart the watch.
 - **Every comment gets a response** — no silent ignores.
 - **Verify before pushing** — always run the failing check locally first.
 - **Never stop until terminal** — if `pr.ready` is false, keep going.
+- **No sub-agents** — all work happens in this thread. No Agent tool, no Task tool.
