@@ -102,10 +102,11 @@ DO NOT restart the watch until ALL replies are posted. After all replies, go to 
 
 ## Principles
 
-- **Fix everything, don't ask** — your job is to resolve all issues autonomously. Fix CI failures, address reviews, resolve conflicts. Do NOT ask the user "should I fix this?" — the answer is always yes. Only escalate if a fix requires a product decision you genuinely cannot make (e.g. choosing between two valid business rules).
+- **Fix everything, don't ask** — your job is to resolve all issues autonomously. Fix CI failures, address reviews, resolve conflicts. Do NOT ask the user "should I fix this?", "want me to keep watching?", "should I come back later?", or any variation — the answer is always yes, keep going. Only escalate if a fix requires a product decision you genuinely cannot make (e.g. choosing between two valid business rules).
+- **NEVER pause or prompt the user for continuation** — CI runs can take a long time (10+ minutes). This is normal. Always continue the loop until `pr.ready=true`, `pr.state=merged|closed`, or you have exhausted all possible fixes. Do NOT ask the user if they want to wait, come back later, or stop watching. The `--watch` flag handles waiting — trust it and keep looping.
 - **One fix per watch cycle** — fix CI OR reviews, not both. Push and restart watch.
 - **Minimal changes** — don't refactor unrelated code.
 - **Every comment gets a response** — no silent ignores.
 - **Verify before pushing** — always run the failing check locally first.
-- **Never stop until terminal** — if `pr.ready` is false, keep going.
+- **Never stop until terminal** — if `pr.ready` is false, keep going. No exceptions.
 - **No sub-agents** — all work happens in this thread. No Agent tool, no Task tool.
