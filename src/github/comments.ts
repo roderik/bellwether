@@ -38,6 +38,12 @@ export interface FilterOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Tracking comment
+// ---------------------------------------------------------------------------
+
+export const TRACKING_COMMENT_MARKER = "<!-- bellwether-tracking -->";
+
+// ---------------------------------------------------------------------------
 // Meta-comment filters
 // ---------------------------------------------------------------------------
 
@@ -45,6 +51,7 @@ type MetaFilter = (user: string, body: string) => boolean;
 
 const DEFAULT_META_FILTERS: MetaFilter[] = [
   (_user, body) => body.startsWith("> Re: comment "),
+  (_user, body) => body.startsWith(TRACKING_COMMENT_MARKER),
   (user, body) => (user === "vercel[bot]" || user === "vercel") && body.startsWith("[vc]:"),
   (user, body) => (user === "supabase[bot]" || user === "supabase") && body.startsWith("[supa]:"),
   (user, body) =>
@@ -264,6 +271,21 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
     });
   }
 
+  // Build set of issue comment IDs that have been replied to
+  // (via old-style "> Re: comment {id}" or new-style tracking comment)
+  const repliedIssueCommentIds = new Set<number>();
+  for (const ic of issueComments) {
+    const oldMatch = ic.body.match(/^> Re: comment (\d+)/);
+    if (oldMatch) {
+      repliedIssueCommentIds.add(Number(oldMatch[1]));
+    }
+    if (ic.body.startsWith(TRACKING_COMMENT_MARKER)) {
+      for (const m of ic.body.matchAll(/- Re: comment (\d+)/g)) {
+        repliedIssueCommentIds.add(Number(m[1]));
+      }
+    }
+  }
+
   // Issue comments (general PR comments)
   for (const comment of issueComments) {
     if (isMetaComment(comment.user?.login ?? "", comment.body)) {
@@ -284,7 +306,7 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
       url: comment.html_url,
       replies: [],
       hasHumanReply: false,
-      hasAnyReply: false,
+      hasAnyReply: repliedIssueCommentIds.has(comment.id),
       isResolved: false,
     });
   }
@@ -373,7 +395,43 @@ export async function replyToComment(
   );
 
   if (!response.ok) {
-    // Fallback to issue comment endpoint
+    // Fallback: consolidate into a single tracking comment with bullet list
+    const existingComments = await fetchAllPages<RawIssueComment>(
+      `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments?per_page=100`,
+      token,
+      proxyFetch,
+    );
+
+    const trackingComment = existingComments.find((c) =>
+      c.body.startsWith(TRACKING_COMMENT_MARKER),
+    );
+    const newBullet = `- Re: comment ${commentId} — ${message}`;
+
+    if (trackingComment) {
+      // Append bullet to existing tracking comment
+      const updatedBody = `${trackingComment.body}\n${newBullet}`;
+      const updateResponse = await ghFetch(
+        `https://api.github.com/repos/${owner}/${repo}/issues/comments/${trackingComment.id}`,
+        token,
+        proxyFetch,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: updatedBody }),
+        },
+      );
+
+      if (!updateResponse.ok) {
+        const error = await updateResponse.text();
+        throw new Error(
+          `Failed to update tracking comment: ${updateResponse.status} - ${error}`,
+        );
+      }
+
+      return updateResponse.json() as Promise<{ html_url: string }>;
+    }
+
+    // Create new tracking comment
     const issueResponse = await ghFetch(
       `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments`,
       token,
@@ -382,7 +440,7 @@ export async function replyToComment(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          body: `> Re: comment ${commentId}\n\n${message}`,
+          body: `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n${newBullet}`,
         }),
       },
     );
