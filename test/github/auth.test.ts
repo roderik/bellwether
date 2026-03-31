@@ -23,6 +23,24 @@ const mockAccess = vi.mocked(access);
 const mockReadFile = vi.mocked(readFile);
 const mockGetRepoRoot = vi.mocked(getRepoRoot);
 
+function asReadFileResult(value: string) {
+  return value as Awaited<ReturnType<typeof readFile>>;
+}
+
+function asSpawnResult(
+  value: Partial<ReturnType<typeof spawnSync>>,
+): ReturnType<typeof spawnSync> {
+  return {
+    stdout: "",
+    status: 0,
+    stderr: "",
+    pid: 1,
+    output: [],
+    signal: null,
+    ...value,
+  } as ReturnType<typeof spawnSync>;
+}
+
 beforeEach(() => {
   delete process.env.GITHUB_TOKEN;
   delete process.env.GH_TOKEN;
@@ -44,87 +62,52 @@ describe("getGitHubToken", () => {
   it("reads from .env.local file", async () => {
     mockGetRepoRoot.mockReturnValue("/repo");
     mockAccess.mockResolvedValue(undefined);
-    mockReadFile.mockResolvedValue('GITHUB_TOKEN="file-token"\nOTHER=val' as any);
+    mockReadFile.mockResolvedValue(asReadFileResult('GITHUB_TOKEN="file-token"\nOTHER=val'));
     expect(await getGitHubToken()).toBe("file-token");
   });
 
   it("reads unquoted token from .env.local", async () => {
     mockGetRepoRoot.mockReturnValue("/repo");
     mockAccess.mockResolvedValue(undefined);
-    mockReadFile.mockResolvedValue("GITHUB_TOKEN=bare-token\n" as any);
+    mockReadFile.mockResolvedValue(asReadFileResult("GITHUB_TOKEN=bare-token\n"));
     expect(await getGitHubToken()).toBe("bare-token");
   });
 
   it("reads single-quoted token from .env.local", async () => {
     mockGetRepoRoot.mockReturnValue("/repo");
     mockAccess.mockResolvedValue(undefined);
-    mockReadFile.mockResolvedValue("GITHUB_TOKEN='quoted-token'\n" as any);
+    mockReadFile.mockResolvedValue(asReadFileResult("GITHUB_TOKEN='quoted-token'\n"));
     expect(await getGitHubToken()).toBe("quoted-token");
   });
 
   it("skips .env.local when file does not exist", async () => {
     mockGetRepoRoot.mockReturnValue("/repo");
     mockAccess.mockRejectedValue(new Error("ENOENT"));
-    mockSpawnSync.mockReturnValue({
-      stdout: "cli-token",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "cli-token" }));
     expect(await getGitHubToken()).toBe("cli-token");
   });
 
   it("skips .env.local when no GITHUB_TOKEN in content", async () => {
     mockGetRepoRoot.mockReturnValue("/repo");
     mockAccess.mockResolvedValue(undefined);
-    mockReadFile.mockResolvedValue("OTHER_VAR=value\n" as any);
-    mockSpawnSync.mockReturnValue({
-      stdout: "cli-token",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockReadFile.mockResolvedValue(asReadFileResult("OTHER_VAR=value\n"));
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "cli-token" }));
     expect(await getGitHubToken()).toBe("cli-token");
   });
 
   it("falls back to gh auth token CLI", async () => {
-    mockSpawnSync.mockReturnValue({
-      stdout: "cli-token",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "cli-token" }));
     expect(await getGitHubToken()).toBe("cli-token");
   });
 
   it("returns null when gh CLI fails", async () => {
-    mockSpawnSync.mockReturnValue({
-      stdout: "",
-      status: 1,
-      stderr: "error",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ status: 1, stderr: "error" }));
     expect(await getGitHubToken()).toBeNull();
   });
 
   it("returns null when no repo root and CLI fails", async () => {
     mockGetRepoRoot.mockReturnValue(null);
-    mockSpawnSync.mockReturnValue({
-      stdout: "",
-      status: 1,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ status: 1 }));
     expect(await getGitHubToken()).toBeNull();
   });
 });
