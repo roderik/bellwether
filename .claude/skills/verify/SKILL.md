@@ -1,6 +1,7 @@
 ---
 name: verify
 description: Run lint, tests, and build to verify the project is in a good state. Use after making code changes.
+allowed-tools: Bash(bun *) Read
 ---
 
 Run all verification steps sequentially. Stop and report on first failure:
