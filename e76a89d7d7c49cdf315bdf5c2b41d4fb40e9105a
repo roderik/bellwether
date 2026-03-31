@@ -1,0 +1,27 @@
+SKILL.md
+  3a0fb2f1842ef56a 9,14,16,31-36,47,55-57,59,61,63,65,68-69,73-77,79,81,83,101,111
+skills/bellwether/SKILL.md
+  3a0fb2f1842ef56a 9,14,16,31-36,47,55-57,59,61,63,65,68-69,73-77,79,81,83,101,111
+.claude/skills/verify/SKILL.md
+  3a0fb2f1842ef56a 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "e76a89d7d7c49cdf315bdf5c2b41d4fb40e9105a",
+  "prompts": {
+    "3a0fb2f1842ef56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6dd72aac-4b42-4836-a5fa-6a35b4d5810a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer <roderik@settlemint.com>",
+      "messages": [],
+      "total_additions": 63,
+      "total_deletions": 42,
+      "accepted_lines": 63,
+      "overriden_lines": 0
+    }
+  }
+}
