@@ -17,7 +17,7 @@ IMPORTANT: Execute ALL work in the main thread. Do NOT use the Agent tool, Task 
 
 ## Critical: Use the bellwether CLI
 
-- The ONLY way to check CI status, PR state, and reviews is `bellwether check --watch`. This command returns as soon as there is actionable work (CI failures, unresolved reviews) or when all checks pass. It only polls while CI is pending with nothing to do. Do NOT add sleep or polling.
+- The ONLY way to check CI status, PR state, and reviews is `bellwether check --watch`. This command returns only when the PR is actually merge-ready (`pr.ready=true`), when actionable work appears (CI failures, unresolved reviews, merge conflicts), when the PR reaches a terminal state (`merged` or `closed`), or on timeout. It keeps polling while the PR is still not ready but there is nothing local to fix yet, including pending external checks and `mergeable=blocked|unstable|unknown`. Do NOT add sleep or polling.
 - NEVER use `gh api`, `gh pr checks`, `gh pr view --json`, `gh api repos/*/check-runs`, or any manual GitHub API calls to check CI or review status.
 - NEVER use `sleep` to wait for CI. The `--watch` flag handles waiting internally.
 - NEVER parse review comments manually via `gh api`. The bellwether CLI returns them in structured format.
@@ -27,13 +27,13 @@ IMPORTANT: Execute ALL work in the main thread. Do NOT use the Agent tool, Task 
 ## The Loop
 
 ```
-1. bellwether check --watch        (returns when actionable: CI failures, unresolved reviews, all passing, or timeout; DO NOT substitute with gh/GitHub API calls — use this exact command)
+1. bellwether check --watch        (returns only on pr.ready=true, actionable work, merged/closed PR state, or timeout; DO NOT substitute with gh/GitHub API calls — use this exact command)
 2. If pr.ready=true -> done, report "merge-ready"
 3. If pr.state=merged|closed -> done, report status
 4. If CI failures -> fix them (Phase 1), push, go to 1
 5. If unresolved reviews -> address them (Phase 2), push, go to 1
 6. If pr.mergeable=dirty|behind -> /sync, push, go to 1
-7. If timed out -> go to 1 (restart watch)
+7. If pr.mergeable=blocked|unstable|unknown and there is no local action -> keep waiting; if the watch times out, go to 1 (restart watch)
 ```
 
 ## What `bellwether check --watch` returns
@@ -43,6 +43,8 @@ Three sections:
 - **pr** — `state` (open/closed/merged), `mergeable` (clean/dirty/behind/blocked/unstable), `ready` (true when all conditions met)
 - **ci** — SHA, check summary, and for each failing check: the filtered error log with file paths and line numbers
 - **reviews** — unresolved review comments with full body, file path, and line number
+
+Important: `allPassing=true` is not sufficient on its own. The only success condition is `pr.ready=true`.
 
 ## Phase 1: Fix CI failures
 
@@ -105,6 +107,7 @@ DO NOT restart the watch until ALL replies are posted. After all replies, go to 
 
 - **Fix everything, don't ask** — your job is to resolve all issues autonomously. Fix CI failures, address reviews, resolve conflicts. Do NOT ask the user "should I fix this?", "want me to keep watching?", "should I come back later?", or any variation — the answer is always yes, keep going. Only escalate if a fix requires a product decision you genuinely cannot make (e.g. choosing between two valid business rules).
 - **NEVER pause or prompt the user for continuation** — CI runs can take a long time (10+ minutes). This is normal. Always continue the loop until `pr.ready=true`, `pr.state=merged|closed`, or you have exhausted all possible fixes. Do NOT ask the user if they want to wait, come back later, or stop watching. The `--watch` flag handles waiting — trust it and keep looping.
+- **Blocked is still waiting** — if CI is green and reviews are resolved but `pr.ready=false` because `mergeable=blocked|unstable|unknown`, the job is not done. Keep waiting and restart `bellwether check --watch` after every timeout until the PR is actually ready or reaches a terminal state.
 - **One fix per watch cycle** — fix CI OR reviews, not both. Push and restart watch.
 - **Minimal changes** — don't refactor unrelated code.
 - **Every comment gets a response** — no silent ignores.

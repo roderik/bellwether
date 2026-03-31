@@ -101,6 +101,22 @@ const mergeStateDirty = {
   baseBranch: "main",
 };
 
+const mergeStateBlocked = {
+  state: "open" as const,
+  mergeable: false,
+  mergeableState: "blocked",
+  headSha: "abc123",
+  baseBranch: "main",
+};
+
+const mergeStateClosed = {
+  state: "closed" as const,
+  mergeable: false,
+  mergeableState: "unknown",
+  headSha: "abc123",
+  baseBranch: "main",
+};
+
 describe("checkCommand.run", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -173,6 +189,23 @@ describe("checkCommand.run", () => {
     expect(meta.cta).toBeUndefined();
   });
 
+  it("returns watch CTA when checks are green but PR is still blocked", async () => {
+    const c = makeCtx();
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateBlocked);
+    mockGetCI.mockResolvedValue({
+      status: { ...ciResult.status, pending: 0, failing: 0 },
+      flat: ciResult.flat,
+    } as any);
+    mockGetReviews.mockResolvedValue(reviewsResult);
+    mockFormatReviews.mockReturnValue(reviewsFlat);
+
+    await checkCommand.run(c);
+    const meta = c.ok.mock.calls[0][1] as any;
+    expect(meta.cta.description).toContain("not merge-ready yet");
+    expect(meta.cta.commands[0].command).toBe("check --watch");
+  });
+
   // Reply mode
   it("delegates to postReply", async () => {
     const c = makeCtx({ reply: "1:Fixed!" });
@@ -211,7 +244,7 @@ describe("checkCommand.run", () => {
   });
 
   // Watch mode
-  it("watch returns immediately when all passing", async () => {
+  it("watch returns immediately when PR is ready", async () => {
     const c = makeCtx({ watch: true });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
     mockFetchPRMergeState.mockResolvedValue(mergeStateClean);
@@ -224,6 +257,38 @@ describe("checkCommand.run", () => {
 
     const result = (await checkCommand.run(c)) as any;
     expect(result.ci.allPassing).toBe(true);
+  });
+
+  it("watch keeps polling while checks are green but mergeability is blocked", async () => {
+    vi.useFakeTimers();
+    try {
+      const c = makeCtx({ watch: true, interval: 1, timeout: 5 });
+      mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+      mockFetchPRMergeState
+        .mockResolvedValueOnce(mergeStateBlocked)
+        .mockResolvedValueOnce(mergeStateClean);
+      mockGetCI
+        .mockResolvedValueOnce({
+          status: { ...ciResult.status, pending: 0, failing: 0 },
+          flat: ciResult.flat,
+        } as any)
+        .mockResolvedValueOnce({
+          status: { ...ciResult.status, pending: 0, failing: 0 },
+          flat: ciResult.flat,
+        } as any);
+      mockGetReviews.mockResolvedValue(reviewsResult);
+      mockFormatReviews.mockReturnValue(reviewsFlat);
+
+      const promise = checkCommand.run(c);
+      await vi.advanceTimersByTimeAsync(1100);
+      const result = (await promise) as any;
+
+      expect(mockFetchPRMergeState).toHaveBeenCalledTimes(2);
+      expect(result.pr.ready).toBe(true);
+      expect(result.ci.allPassing).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("watch returns failing with CTA when all checks done", async () => {
@@ -352,6 +417,21 @@ describe("checkCommand.run", () => {
     expect(result.pr.conflict).toEqual({
       base: "main",
       resolution: "git fetch origin && git merge origin/main && git push",
+    });
+  });
+
+  it("watch returns immediately when PR is closed", async () => {
+    const c = makeCtx({ watch: true });
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockResolvedValue(mergeStateClosed);
+
+    const result = (await checkCommand.run(c)) as any;
+    expect(mockGetCI).not.toHaveBeenCalled();
+    expect(mockGetReviews).not.toHaveBeenCalled();
+    expect(result.pr).toEqual({
+      state: "closed",
+      mergeable: "unknown",
+      ready: false,
     });
   });
 
