@@ -82,7 +82,7 @@ DO NOT start Step C until the commit exists and is pushed.
 
 ### Step C: Reply to all comments
 
-EVERY reply MUST use `--resolve`. NEVER use `--reply` without `--resolve`. This is what actually resolves the thread in GitHub. Without it, the thread stays open and `pr.ready` will never be true.
+EVERY reply MUST use `--resolve`. NEVER use `--reply` without `--resolve`. This is what actually resolves the thread in GitHub. Without it, the thread stays open and `pr.ready=true` will never be set.
 
 Reply to each comment individually — one `bellwether check --reply ... --resolve` call per comment:
 
