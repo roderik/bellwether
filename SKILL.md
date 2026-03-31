@@ -82,21 +82,22 @@ DO NOT start Step C until the commit exists and is pushed.
 
 ### Step C: Reply to all comments
 
-For inline code review comments (with file path), reply individually with `--resolve`:
+EVERY reply MUST use `--resolve`. NEVER use `--reply` without `--resolve`. This is what actually resolves the thread in GitHub. Without it, the thread stays open and `pr.ready` will never be true.
+
+Reply to each comment individually — one `bellwether check --reply ... --resolve` call per comment:
 
 ```bash
+# Fixed something
 bellwether check --reply "<id>:Fixed in <hash>. <description>" --resolve
+
+# Won't fix / false positive
+bellwether check --reply "<id>:Won't fix — <reason>" --resolve
+
+# Already addressed
+bellwether check --reply "<id>:Already handled — <explanation>" --resolve
 ```
 
-For top-level bot comments (no file path), post a single summary reply:
-
-```
-Addressed review findings in <hash>:
-- REVIEW 456: Fixed null check in src/foo.ts
-- REVIEW 789: Won't fix — pattern is intentional
-```
-
-Every comment gets a response. ALWAYS use `--resolve` on every reply — including won't-fix and false-positive responses. All threads must be resolved to reach pr.ready=true.
+This applies to ALL comment types: inline review comments, top-level bot comments, human comments. Every comment, every time, gets `--reply` with `--resolve`.
 
 DO NOT restart the watch until ALL replies are posted. After all replies, go to step 1 of the loop.
 
@@ -107,6 +108,7 @@ DO NOT restart the watch until ALL replies are posted. After all replies, go to 
 - **One fix per watch cycle** — fix CI OR reviews, not both. Push and restart watch.
 - **Minimal changes** — don't refactor unrelated code.
 - **Every comment gets a response** — no silent ignores.
+- **Always resolve** — every `--reply` MUST include `--resolve`. No exceptions, no matter the comment type or response (fix, won't-fix, false positive).
 - **Verify before pushing** — always run the failing check locally first.
 - **Never stop until terminal** — if `pr.ready` is false, keep going. No exceptions.
 - **No sub-agents** — all work happens in this thread. No Agent tool, no Task tool.
