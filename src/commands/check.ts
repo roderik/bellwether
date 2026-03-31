@@ -439,12 +439,12 @@ export const checkCommand = {
     if (status.pending > 0) {
       cta = {
         description: "Checks still running:",
-        commands: [{ command: "check --watch", description: "Watch until complete" }],
+        commands: [{ command: "check --watch", description: "Watch until merge-ready or terminal" }],
       };
     } else if (status.failing > 0) {
       cta = {
         description: "Checks failing:",
-        commands: [{ command: "check --unresolved", description: "Show unresolved reviews" }],
+        commands: [{ command: "check --watch", description: "Watch until checks are re-run" }],
       };
     } else if (prSection.ready) {
       cta = undefined;
