@@ -53,7 +53,7 @@ interface CheckCommandContext {
 
 export const checkCommand = {
   description: "Show CI status and review comments for a PR",
-  hint: "Combines CI checks and review comments. Use --reply and --detail for review actions. With --watch, returns immediately when there is actionable work (CI failures, unresolved reviews), only polls while CI is pending with nothing to do.",
+  hint: "Combines CI checks and review comments. Use --reply and --detail for review actions. With --watch, returns when the PR is merge-ready, when there is actionable work (CI failures, unresolved reviews, merge conflicts), on terminal PR state, or on timeout.",
   args: z.object({
     pr: z.coerce.number().optional().describe("PR number (auto-detects from branch)"),
   }),
@@ -62,7 +62,7 @@ export const checkCommand = {
       .boolean()
       .default(false)
       .describe(
-        "Poll until actionable: returns on CI failure, unresolved reviews, all passing, merge conflict, or timeout",
+        "Poll until merge-ready or actionable: returns on pr.ready=true, CI failures, unresolved reviews, merge conflicts, terminal PR state, or timeout",
       ),
     interval: z.coerce.number().default(30).describe("Poll interval in seconds"),
     timeout: z.coerce.number().default(1800).describe("Timeout in seconds"),
@@ -130,7 +130,7 @@ export const checkCommand = {
   }),
   examples: [
     { description: "CI status + review comments for current branch" },
-    { options: { watch: true }, description: "Watch until CI completes" },
+    { options: { watch: true }, description: "Watch until the PR is ready or actionable" },
     { options: { unresolved: true }, description: "Show only unresolved reviews" },
     { options: { detail: 456 }, description: "Full detail for comment 456" },
     { options: { reply: "456:Fixed in latest commit" }, description: "Reply to comment" },
@@ -163,10 +163,10 @@ export const checkCommand = {
       humansOnly: opts.humansOnly,
     };
 
-    // Watch mode — poll until there is actionable work or CI reaches terminal state.
-    // Returns immediately when: CI fails, unresolved reviews exist, merge conflict,
-    // all passing, or timeout. Only keeps polling when CI is pending AND there is
-    // nothing actionable (no failures, no unresolved reviews).
+    // Watch mode — poll until the PR is merge-ready, actionable work appears, the
+    // PR reaches a terminal state, or the watch times out. Keep polling while the
+    // PR is still not ready but there is nothing local to fix yet, for example
+    // pending external checks or GitHub reporting mergeability as blocked/unstable.
     if (opts.watch) {
       const start = Date.now();
       let syncAttempted = false;
@@ -181,6 +181,16 @@ export const checkCommand = {
           ctx.token,
           ctx.proxyFetch,
         );
+
+        if (mergeState.state !== "open") {
+          return c.ok({
+            pr: {
+              state: mergeState.state,
+              mergeable: mergeState.mergeableState,
+              ready: false,
+            },
+          });
+        }
 
         // Branch behind base — auto-sync once, then continue polling
         if (mergeState.mergeableState === "behind" && !syncAttempted) {
@@ -259,8 +269,7 @@ export const checkCommand = {
         const prSection = buildPRSection(mergeState, status, unresolvedCount);
         const prSectionWithSync = syncAttempted ? { ...prSection, synced: true } : prSection;
 
-        // Terminal: all passing, no unresolved reviews
-        if (status.failing === 0 && status.pending === 0 && unresolvedCount === 0) {
+        if (prSection.ready) {
           return c.ok({
             pr: prSectionWithSync,
             ci: { ...ciFlat, allPassing: true },
@@ -304,10 +313,10 @@ export const checkCommand = {
           );
         }
 
-        // Nothing actionable, CI still pending — keep polling
+        // Nothing actionable yet and the PR is still not ready — keep polling
         const elapsed = Math.round((Date.now() - start) / 1000);
         process.stderr.write(
-          `[watch] poll ${pollCount} (${elapsed}s) — ${status.passing}/${status.total} passing, ${status.pending} pending, ${status.failing} failing\n`,
+          `[watch] poll ${pollCount} (${elapsed}s) — mergeable=${mergeState.mergeableState}, ready=${prSection.ready}, ${status.passing}/${status.total} passing, ${status.pending} pending, ${status.failing} failing\n`,
         );
 
         if (elapsed >= opts.timeout) {
@@ -420,25 +429,35 @@ export const checkCommand = {
       (cm) => !(cm.isResolved || cm.hasHumanReply),
     ).length;
     const prSection = buildPRSection(mergeState, status, unresolvedCount);
+    let cta:
+      | {
+          description: string;
+          commands: { command: string; description: string }[];
+        }
+      | undefined;
+
+    if (status.pending > 0) {
+      cta = {
+        description: "Checks still running:",
+        commands: [{ command: "check --watch", description: "Watch until merge-ready or terminal" }],
+      };
+    } else if (status.failing > 0) {
+      cta = {
+        description: "Checks failing:",
+        commands: [{ command: "check --watch", description: "Watch until checks are re-run" }],
+      };
+    } else if (prSection.ready) {
+      cta = undefined;
+    } else {
+      cta = {
+        description: `PR is not merge-ready yet (mergeable: ${prSection.mergeable}):`,
+        commands: [{ command: "check --watch", description: "Keep watching until ready" }],
+      };
+    }
 
     return c.ok(
       { pr: prSection, ci: ciFlat, reviews: reviewsFlat },
-      {
-        cta:
-          status.pending > 0
-            ? {
-                description: "Checks still running:",
-                commands: [{ command: "check --watch", description: "Watch until complete" }],
-              }
-            : status.failing > 0
-              ? {
-                  description: "Checks failing:",
-                  commands: [
-                    { command: "check --unresolved", description: "Show unresolved reviews" },
-                  ],
-                }
-              : undefined,
-      },
+      { cta },
     );
   },
 };

@@ -29,8 +29,7 @@ export interface ProxyFetchResponse {
   status: number;
   headers: HeaderMap;
   text(): Promise<string>;
-  // eslint-disable-next-line typescript/no-explicit-any -- GitHub API responses are untyped; callers cast at call sites
-  json(): Promise<any>;
+  json(): Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------

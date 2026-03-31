@@ -32,6 +32,10 @@ const mockListPRs = vi.mocked(listOpenPRs);
 const mockSelect = vi.mocked(clack.select);
 const mockIsCancel = vi.mocked(clack.isCancel);
 
+function asSelectValue(value: number | symbol) {
+  return value as Awaited<ReturnType<typeof clack.select>>;
+}
+
 // ---------------------------------------------------------------------------
 // bootstrap
 // ---------------------------------------------------------------------------
@@ -104,7 +108,7 @@ describe("resolvePR", () => {
         state: "open",
       },
     ]);
-    mockSelect.mockResolvedValue(5 as any);
+    mockSelect.mockResolvedValue(asSelectValue(5));
     const result = await resolvePR(ctx);
     expect(result.prNumber).toBe(5);
   });
@@ -120,7 +124,7 @@ describe("resolvePR", () => {
         state: "open",
       },
     ]);
-    mockSelect.mockResolvedValue(7 as any);
+    mockSelect.mockResolvedValue(asSelectValue(7));
     const result = await resolvePR(ctx);
     expect(result.prNumber).toBe(7);
   });
@@ -131,7 +135,7 @@ describe("resolvePR", () => {
     mockListPRs.mockResolvedValue([
       { number: 3, title: "PR 3", html_url: "url3", head: { sha: "abc", ref: "x" }, state: "open" },
     ]);
-    mockSelect.mockResolvedValue(3 as any);
+    mockSelect.mockResolvedValue(asSelectValue(3));
     const result = await resolvePR(ctx);
     expect(result.prNumber).toBe(3);
   });
@@ -141,7 +145,7 @@ describe("resolvePR", () => {
     mockListPRs.mockResolvedValue([
       { number: 1, title: "PR 1", html_url: "url1", head: { sha: "abc", ref: "a" }, state: "open" },
     ]);
-    mockSelect.mockResolvedValue(1 as any);
+    mockSelect.mockResolvedValue(asSelectValue(1));
     const result = await resolvePR(ctx);
     expect(result.prNumber).toBe(1);
   });
@@ -158,7 +162,7 @@ describe("resolvePR", () => {
       { number: 1, title: "PR 1", html_url: "url1", head: { sha: "abc", ref: "a" }, state: "open" },
     ]);
     mockIsCancel.mockReturnValue(true);
-    mockSelect.mockResolvedValue(Symbol("cancel") as any);
+    mockSelect.mockResolvedValue(asSelectValue(Symbol("cancel")));
 
     const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process.exit");

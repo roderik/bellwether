@@ -98,12 +98,14 @@ bellwether is built around a watch loop:
 ```
 check --watch
   → pr.ready = true?   → done ✓
+  → pr.state terminal? → done ✓
   → CI failing?        → show filtered error logs → fix → push → repeat
   → Unresolved review? → show comment with context → address → reply → repeat
   → Merge conflict?    → sync branch → push → repeat
+  → Still blocked?     → keep watching until ready/timeout → repeat
 ```
 
-It queries GitHub's Check Runs API directly, filters job logs down to signal (compiler errors, test failures — not noise), and surfaces review threads with file and line context. `--watch` blocks until CI completes — no polling required.
+It queries GitHub's Check Runs API directly, filters job logs down to signal (compiler errors, test failures — not noise), and surfaces review threads with file and line context. `--watch` blocks until the PR is actually ready, actionable, terminal, or timed out — no manual polling required.
 
 ## Agent usage
 
