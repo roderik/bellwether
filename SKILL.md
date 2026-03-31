@@ -82,7 +82,7 @@ DO NOT start Step C until the commit exists and is pushed.
 
 ### Step C: Reply to all comments
 
-EVERY reply MUST use `--resolve`. NEVER use `--reply` without `--resolve`. This is what actually resolves the thread in GitHub. Without it, the thread stays open and `pr.ready=true` will never be set.
+EVERY reply MUST use `--resolve`. NEVER use `--reply` without `--resolve`. `--resolve` marks review threads as resolved in GitHub — always include it so threads don't stay open.
 
 Reply to each comment individually — one `bellwether check --reply ... --resolve` call per comment:
 
@@ -97,7 +97,7 @@ bellwether check --reply "<id>:Won't fix — <reason>" --resolve
 bellwether check --reply "<id>:Already handled — <explanation>" --resolve
 ```
 
-This applies to ALL comment types: inline review comments, top-level bot comments, human comments. Every comment, every time, gets `--reply` with `--resolve`.
+Always include `--resolve` on every reply regardless of comment type. It resolves review threads in GitHub; for other comment types it is safely ignored. Every comment, every time, gets `--reply` with `--resolve`.
 
 DO NOT restart the watch until ALL replies are posted. After all replies, go to step 1 of the loop.
 
