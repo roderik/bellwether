@@ -358,6 +358,46 @@ describe("checkCommand.run", () => {
     vi.useRealTimers();
   });
 
+  it("watch resets inactivity timeout when a new head SHA starts a fresh CI cycle", async () => {
+    vi.useFakeTimers();
+    try {
+      const c = makeCtx({ watch: true, interval: 1, timeout: 2 });
+      const mergeStateNextSha = { ...mergeStateClean, headSha: "def456" };
+      mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+      mockFetchPRMergeState
+        .mockResolvedValueOnce(mergeStateClean)
+        .mockResolvedValueOnce(mergeStateNextSha)
+        .mockResolvedValueOnce(mergeStateNextSha)
+        .mockResolvedValueOnce(mergeStateNextSha);
+      mockGetCI
+        .mockResolvedValueOnce(asCISection(ciResult))
+        .mockResolvedValueOnce(asCISection({
+          status: { ...ciResult.status, sha: "def456" },
+          flat: { ...ciResult.flat, sha: "def456" },
+        }))
+        .mockResolvedValueOnce(asCISection({
+          status: { ...ciResult.status, sha: "def456" },
+          flat: { ...ciResult.flat, sha: "def456" },
+        }))
+        .mockResolvedValueOnce(asCISection({
+          status: { ...ciResult.status, sha: "def456", pending: 0, failing: 0 },
+          flat: { ...ciResult.flat, sha: "def456" },
+        }));
+      mockGetReviews.mockResolvedValue(reviewsResult);
+      mockFormatReviews.mockReturnValue(reviewsFlat);
+
+      const promise = checkCommand.run(c);
+      await vi.advanceTimersByTimeAsync(3100);
+      const result = cast<{ pr: { ready: boolean }; ci: { allPassing: boolean } }>(await promise);
+
+      expect(result.pr.ready).toBe(true);
+      expect(result.ci.allPassing).toBe(true);
+      expect(mockFetchPRMergeState).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("watch times out", async () => {
     const c = makeCtx({ watch: true, timeout: 0 });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
