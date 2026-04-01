@@ -27,6 +27,12 @@ interface BellwetherCheckOutput {
   };
 }
 
+interface CurrentBranchPR {
+  branch: string | null;
+  prNumber: number | null;
+  error?: string;
+}
+
 function normalizeStdinChunk(chunk: Buffer | string | Uint8Array): Buffer {
   if (typeof chunk === "string") {
     return Buffer.from(chunk);
@@ -51,10 +57,14 @@ function runBellwetherCheck(prNumber: number): { output?: BellwetherCheckOutput;
   });
 
   if (result.status !== 0) {
+    const stdMessage = result.stderr.trim() || result.stdout.trim();
+    const errorDetail = result.error instanceof Error ? result.error.message : undefined;
     const message =
-      result.stderr.trim() ||
-      result.stdout.trim() ||
-      `bellwether check exited with status ${result.status ?? "unknown"}`;
+      stdMessage.length > 0
+        ? stdMessage
+        : errorDetail
+          ? `bellwether check failed: ${errorDetail}`
+          : `bellwether check exited with status ${result.status ?? "unknown"}`;
     return { error: message };
   }
 
@@ -70,10 +80,10 @@ function runBellwetherCheck(prNumber: number): { output?: BellwetherCheckOutput;
   }
 }
 
-async function resolveCurrentBranchPR(): Promise<number | null> {
+async function resolveCurrentBranchPR(): Promise<CurrentBranchPR> {
   const branch = getCurrentBranch();
   if (!branch || branch === "main" || branch === "master") {
-    return null;
+    return { branch, prNumber: null };
   }
 
   try {
@@ -85,9 +95,13 @@ async function resolveCurrentBranchPR(): Promise<number | null> {
       ctx.token,
       ctx.proxyFetch,
     );
-    return pr?.number ?? null;
-  } catch {
-    return null;
+    return { branch, prNumber: pr?.number ?? null };
+  } catch (error) {
+    return {
+      branch,
+      prNumber: null,
+      error: error instanceof Error ? error.message : "PR detection failed",
+    };
   }
 }
 
@@ -96,7 +110,14 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
     return {};
   }
 
-  const prNumber = await resolveCurrentBranchPR();
+  const { branch, prNumber, error: prResolutionError } = await resolveCurrentBranchPR();
+  if (prResolutionError) {
+    return {
+      decision: "block",
+      reason: `Current branch ${branch} may have an open PR, but Bellwether could not determine that (${prResolutionError}). Run \`bellwether check --watch\` before stopping.`,
+    };
+  }
+
   if (!prNumber) {
     return {};
   }

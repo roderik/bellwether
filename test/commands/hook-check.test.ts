@@ -207,13 +207,16 @@ describe("hookCheckCommand", () => {
     expect(mockBootstrap).not.toHaveBeenCalled();
   });
 
-  it("returns empty object for Stop when PR detection fails", async () => {
+  it("blocks Stop when PR detection fails on a non-main branch", async () => {
     mockGetCurrentBranch.mockReturnValue("feature/error");
     mockBootstrap.mockRejectedValue(new Error("bad auth"));
     mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("could not determine"),
+    });
     expect(mockSpawnSync).not.toHaveBeenCalled();
   });
 
@@ -367,6 +370,29 @@ describe("hookCheckCommand", () => {
     expect(ok).toHaveBeenCalledWith({
       decision: "block",
       reason: expect.stringContaining("status 7"),
+    });
+  });
+
+  it("blocks Stop with spawnSync error details when bellwether cannot be launched", async () => {
+    mockGetCurrentBranch.mockReturnValue("feature/enoent");
+    mockBootstrap.mockResolvedValue({
+      repoInfo: { owner: "roderik", repo: "bellwether" },
+      token: "token",
+      proxyFetch: vi.fn(),
+    });
+    mockFindPRForBranch.mockResolvedValue({ number: 96 });
+    mockSpawnSync.mockReturnValue({
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: Object.assign(new Error("spawnSync bellwether ENOENT"), { code: "ENOENT" }),
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("ENOENT"),
     });
   });
 
