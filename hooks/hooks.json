@@ -24,6 +24,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bellwether hooks check --format json",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

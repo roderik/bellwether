@@ -20,11 +20,11 @@ interface ClaudeHookEntry {
 }
 
 interface ClaudeMatcherGroup {
-  matcher: string;
+  matcher?: string;
   hooks: ClaudeHookEntry[];
 }
 
-function buildClaudeHooks(): ClaudeMatcherGroup {
+function buildClaudePostToolUseHooks(): ClaudeMatcherGroup {
   return {
     matcher: "Bash",
     hooks: [
@@ -33,6 +33,23 @@ function buildClaudeHooks(): ClaudeMatcherGroup {
       { type: "command", if: "Bash(gh pr ready*)", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT },
     ],
   };
+}
+
+function buildStopHooks(): ClaudeMatcherGroup {
+  return {
+    hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT }],
+  };
+}
+
+function removeBellwetherHooks<T extends { hooks: { command: string }[] }>(groups: T[]): T[] {
+  const cleaned: T[] = [];
+  for (const group of groups) {
+    const filtered = group.hooks.filter((hook) => !hook.command.includes(BELLWETHER_MARKER));
+    if (filtered.length > 0) {
+      cleaned.push({ ...group, hooks: filtered });
+    }
+  }
+  return cleaned;
 }
 
 async function configureClaude(): Promise<string> {
@@ -47,20 +64,16 @@ async function configureClaude(): Promise<string> {
 
   const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>;
   const postToolUse = (hooks.PostToolUse ?? []) as ClaudeMatcherGroup[];
+  const stop = (hooks.Stop ?? []) as ClaudeMatcherGroup[];
 
-  // Remove any existing bellwether hooks
-  const cleaned: ClaudeMatcherGroup[] = [];
-  for (const group of postToolUse) {
-    const filtered = group.hooks.filter((h) => !h.command.includes(BELLWETHER_MARKER));
-    if (filtered.length > 0) {
-      cleaned.push({ ...group, hooks: filtered });
-    }
-  }
+  const cleanedPostToolUse = removeBellwetherHooks(postToolUse);
+  const cleanedStop = removeBellwetherHooks(stop);
 
-  // Add fresh bellwether hooks
-  cleaned.push(buildClaudeHooks());
+  cleanedPostToolUse.push(buildClaudePostToolUseHooks());
+  cleanedStop.push(buildStopHooks());
 
-  hooks.PostToolUse = cleaned;
+  hooks.PostToolUse = cleanedPostToolUse;
+  hooks.Stop = cleanedStop;
   settings.hooks = hooks;
 
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n");
@@ -85,29 +98,25 @@ async function configureCodex(): Promise<string | null> {
   }
 
   interface CodexMatcherGroup {
-    matcher: string;
+    matcher?: string;
     hooks: { command: string; type: string; timeout?: number }[];
   }
 
   const hooks = (config.hooks ?? {}) as Record<string, unknown[]>;
   const postToolUse = (hooks.PostToolUse ?? []) as CodexMatcherGroup[];
+  const stop = (hooks.Stop ?? []) as CodexMatcherGroup[];
 
-  // Remove any existing bellwether hooks
-  const cleaned: CodexMatcherGroup[] = [];
-  for (const group of postToolUse) {
-    const filtered = group.hooks.filter((h) => !h.command.includes(BELLWETHER_MARKER));
-    if (filtered.length > 0) {
-      cleaned.push({ ...group, hooks: filtered });
-    }
-  }
+  const cleanedPostToolUse = removeBellwetherHooks(postToolUse);
+  const cleanedStop = removeBellwetherHooks(stop);
 
-  // Add fresh codex hooks (no `if` — codex doesn't support it)
-  cleaned.push({
+  cleanedPostToolUse.push({
     matcher: "^Bash$",
     hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT }],
   });
+  cleanedStop.push(buildStopHooks());
 
-  hooks.PostToolUse = cleaned;
+  hooks.PostToolUse = cleanedPostToolUse;
+  hooks.Stop = cleanedStop;
   config.hooks = hooks;
 
   await writeFile(hooksPath, JSON.stringify(config, null, 2) + "\n");
@@ -119,7 +128,7 @@ async function configureCodex(): Promise<string | null> {
 // ---------------------------------------------------------------------------
 
 export const hookAddCommand = {
-  description: "Install PostToolUse hooks for Claude Code and Codex",
+  description: "Install PostToolUse and Stop hooks for Claude Code and Codex",
   output: z.object({
     claude: z.string().describe("Path to Claude Code settings file"),
     codex: z.string().nullable().describe("Path to Codex hooks file, or null if not installed"),
