@@ -451,6 +451,56 @@ describe("checkCommand.run", () => {
     }
   });
 
+  it("watch does not reset inactivity timeout when actionable review IDs only reorder", async () => {
+    vi.useFakeTimers();
+    try {
+      const c = makeCtx({ watch: true, interval: 1, timeout: 2 });
+      mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+      mockFetchPRMergeState
+        .mockResolvedValueOnce(mergeStateClean)
+        .mockResolvedValueOnce(mergeStateClean)
+        .mockResolvedValueOnce(mergeStateClean);
+      mockGetCI.mockResolvedValue(asCISection(ciResult));
+      mockGetReviews
+        .mockResolvedValueOnce(
+          asReviewsList({
+            comments: [
+              cast({ id: 2, isResolved: true, hasHumanReply: true, hasAnyReply: true }),
+              cast({ id: 1, isResolved: true, hasHumanReply: true, hasAnyReply: true }),
+            ],
+            total: 2,
+          }),
+        )
+        .mockResolvedValueOnce(
+          asReviewsList({
+            comments: [
+              cast({ id: 1, isResolved: true, hasHumanReply: true, hasAnyReply: true }),
+              cast({ id: 2, isResolved: true, hasHumanReply: true, hasAnyReply: true }),
+            ],
+            total: 2,
+          }),
+        )
+        .mockResolvedValueOnce(
+          asReviewsList({
+            comments: [
+              cast({ id: 1, isResolved: true, hasHumanReply: true, hasAnyReply: true }),
+              cast({ id: 2, isResolved: true, hasHumanReply: true, hasAnyReply: true }),
+            ],
+            total: 2,
+          }),
+        );
+      mockFormatReviews.mockReturnValue(reviewsFlat);
+
+      const promise = checkCommand.run(c);
+      await vi.advanceTimersByTimeAsync(2100);
+      const result = cast<{ ci: { timedOut: boolean } }>(await promise);
+
+      expect(result.ci.timedOut).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("watch times out", async () => {
     const c = makeCtx({ watch: true, timeout: 0 });
     mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });

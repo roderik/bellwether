@@ -27,9 +27,19 @@ interface BellwetherCheckOutput {
   };
 }
 
-function parseHookInput(stdin: Buffer[]): HookInput | null {
+function normalizeStdinChunk(chunk: Buffer | string | Uint8Array): Buffer {
+  if (typeof chunk === "string") {
+    return Buffer.from(chunk);
+  }
+  if (Buffer.isBuffer(chunk)) {
+    return chunk;
+  }
+  return Buffer.from(chunk);
+}
+
+function parseHookInput(stdin: (Buffer | string | Uint8Array)[]): HookInput | null {
   try {
-    return JSON.parse(Buffer.concat(stdin).toString()) as HookInput;
+    return JSON.parse(Buffer.concat(stdin.map(normalizeStdinChunk)).toString()) as HookInput;
   } catch {
     return null;
   }
@@ -99,8 +109,19 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
     };
   }
 
-  if (!output?.pr || output.pr.state !== "open" || output.pr.ready) {
+  if (!output?.pr || output.pr.state !== "open") {
     return {};
+  }
+
+  if (output.pr.ready === true) {
+    return {};
+  }
+
+  if (output.pr.ready === undefined) {
+    return {
+      decision: "block",
+      reason: `Current branch has open PR #${prNumber}, but Bellwether could not verify whether it is merge-ready from the CLI output. This may indicate an older or incompatible Bellwether CLI. Run \`bellwether check --watch\` with an up-to-date CLI before stopping.`,
+    };
   }
 
   const mergeable =
@@ -135,9 +156,9 @@ export const hookCheckCommand = {
       reason?: string;
     }) => unknown;
   }) {
-    const chunks: Buffer[] = [];
+    const chunks: (Buffer | string | Uint8Array)[] = [];
     for await (const chunk of process.stdin) {
-      chunks.push(chunk as Buffer);
+      chunks.push(chunk as Buffer | string | Uint8Array);
     }
 
     const input = parseHookInput(chunks);

@@ -24,11 +24,15 @@ vi.mock("../../src/github/index.js", () => ({
 
 import { hookCheckCommand } from "../../src/commands/hook-check.js";
 
+type StdinChunk = Buffer | string | Uint8Array;
 type StdinAsyncIterator = (typeof process.stdin)[typeof Symbol.asyncIterator];
 
-function mockStdin(data: string) {
+function mockStdin(
+  data: string,
+  chunkFactory: (data: string) => StdinChunk = (value) => Buffer.from(value),
+) {
   vi.spyOn(process.stdin, Symbol.asyncIterator).mockImplementation(async function* stdinMock() {
-    yield Buffer.from(data);
+    yield chunkFactory(data);
   } as unknown as StdinAsyncIterator);
 }
 
@@ -235,6 +239,18 @@ describe("hookCheckCommand", () => {
     });
   });
 
+  it("accepts string stdin chunks without throwing", async () => {
+    mockStdin(JSON.stringify({ tool_input: { command: "git push" } }), (data) => data);
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      hookSpecificOutput: {
+        hookEventName: "PostToolUse",
+        additionalContext: expect.any(String),
+      },
+    });
+  });
+
   it("blocks Stop when bellwether reports the PR is not ready", async () => {
     mockGetCurrentBranch.mockReturnValue("feature/not-ready");
     mockBootstrap.mockResolvedValue({
@@ -377,6 +393,30 @@ describe("hookCheckCommand", () => {
       decision: "block",
       reason:
         "Current branch has an open PR that is not merge-ready. Run `bellwether check --watch` and address the reported CI or review issues before stopping.",
+    });
+  });
+
+  it("blocks Stop with a dedicated reason when bellwether omits readiness", async () => {
+    mockGetCurrentBranch.mockReturnValue("feature/missing-ready");
+    mockBootstrap.mockResolvedValue({
+      repoInfo: { owner: "roderik", repo: "bellwether" },
+      token: "token",
+      proxyFetch: vi.fn(),
+    });
+    mockFindPRForBranch.mockResolvedValue({ number: 95 });
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
+        pr: { state: "open", mergeable: "clean" },
+      }),
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("could not verify whether it is merge-ready"),
     });
   });
 });

@@ -61,7 +61,9 @@ function getActionableReviewIds(
   }[],
   filterOpts: ReviewFilterOptions,
 ): number[] {
-  return comments.filter((comment) => isActionableReview(comment, filterOpts)).map((comment) => comment.id);
+  return comments
+    .filter((comment) => isActionableReview(comment, filterOpts))
+    .map((comment) => comment.id);
 }
 
 function getFailureKeys(status: CIStatus): string[] {
@@ -75,13 +77,14 @@ function buildWatchSnapshotKey(params: {
   actionableReviewIds: number[];
 }): string {
   const { headSha, mergeableState, status, actionableReviewIds } = params;
+  const sortedActionableReviewIds = actionableReviewIds.toSorted((a, b) => a - b);
   return JSON.stringify({
     headSha,
     mergeableState,
     passing: status.passing,
     failing: status.failing,
     pending: status.pending,
-    actionableReviewIds,
+    actionableReviewIds: sortedActionableReviewIds,
   });
 }
 
@@ -394,10 +397,7 @@ export const checkCommand = {
           );
         }
 
-        if (
-          baseline === undefined ||
-          mergeState.headSha !== baseline.headSha
-        ) {
+        if (baseline === undefined || mergeState.headSha !== baseline.headSha) {
           baseline = {
             headSha: mergeState.headSha,
             actionableReviewIds: new Set(actionableReviewIds),
@@ -529,7 +529,9 @@ export const checkCommand = {
     if (status.pending > 0) {
       cta = {
         description: "Checks still running:",
-        commands: [{ command: "check --watch", description: "Watch until merge-ready or terminal" }],
+        commands: [
+          { command: "check --watch", description: "Watch until merge-ready or terminal" },
+        ],
       };
     } else if (status.failing > 0) {
       cta = {
@@ -545,9 +547,6 @@ export const checkCommand = {
       };
     }
 
-    return c.ok(
-      { pr: prSection, ci: ciFlat, reviews: reviewsFlat },
-      { cta },
-    );
+    return c.ok({ pr: prSection, ci: ciFlat, reviews: reviewsFlat }, { cta });
   },
 };
