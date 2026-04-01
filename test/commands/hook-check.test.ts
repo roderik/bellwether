@@ -194,6 +194,25 @@ describe("hookCheckCommand", () => {
     expect(mockSpawnSync).not.toHaveBeenCalled();
   });
 
+  it("returns empty object for Stop on the main branch", async () => {
+    mockGetCurrentBranch.mockReturnValue("main");
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({});
+    expect(mockBootstrap).not.toHaveBeenCalled();
+  });
+
+  it("returns empty object for Stop when PR detection fails", async () => {
+    mockGetCurrentBranch.mockReturnValue("feature/error");
+    mockBootstrap.mockRejectedValue(new Error("bad auth"));
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({});
+    expect(mockSpawnSync).not.toHaveBeenCalled();
+  });
+
   it("returns empty object for Stop when bellwether reports the PR is ready", async () => {
     mockGetCurrentBranch.mockReturnValue("feature/ready");
     mockBootstrap.mockResolvedValue({
@@ -247,6 +266,50 @@ describe("hookCheckCommand", () => {
     );
   });
 
+  it("blocks Stop when bellwether returns no output", async () => {
+    mockGetCurrentBranch.mockReturnValue("feature/no-output");
+    mockBootstrap.mockResolvedValue({
+      repoInfo: { owner: "roderik", repo: "bellwether" },
+      token: "token",
+      proxyFetch: vi.fn(),
+    });
+    mockFindPRForBranch.mockResolvedValue({ number: 91 });
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: "",
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("returned no output"),
+    });
+  });
+
+  it("blocks Stop when bellwether returns invalid JSON", async () => {
+    mockGetCurrentBranch.mockReturnValue("feature/invalid-json");
+    mockBootstrap.mockResolvedValue({
+      repoInfo: { owner: "roderik", repo: "bellwether" },
+      token: "token",
+      proxyFetch: vi.fn(),
+    });
+    mockFindPRForBranch.mockResolvedValue({ number: 92 });
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: "{not-json",
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("invalid JSON"),
+    });
+  });
+
   it("blocks Stop when bellwether check fails", async () => {
     mockGetCurrentBranch.mockReturnValue("feature/failing-check");
     mockBootstrap.mockResolvedValue({
@@ -266,6 +329,54 @@ describe("hookCheckCommand", () => {
     expect(ok).toHaveBeenCalledWith({
       decision: "block",
       reason: expect.stringContaining("could not verify"),
+    });
+  });
+
+  it("blocks Stop with a fallback status message when bellwether exits non-zero without output", async () => {
+    mockGetCurrentBranch.mockReturnValue("feature/exit-status");
+    mockBootstrap.mockResolvedValue({
+      repoInfo: { owner: "roderik", repo: "bellwether" },
+      token: "token",
+      proxyFetch: vi.fn(),
+    });
+    mockFindPRForBranch.mockResolvedValue({ number: 93 });
+    mockSpawnSync.mockReturnValue({
+      status: 7,
+      stdout: "",
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("status 7"),
+    });
+  });
+
+  it("blocks Stop without mergeable or CTA suffixes when bellwether omits them", async () => {
+    mockGetCurrentBranch.mockReturnValue("feature/minimal");
+    mockBootstrap.mockResolvedValue({
+      repoInfo: { owner: "roderik", repo: "bellwether" },
+      token: "token",
+      proxyFetch: vi.fn(),
+    });
+    mockFindPRForBranch.mockResolvedValue({ number: 94 });
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
+        pr: { state: "open", ready: false },
+        cta: { description: "" },
+      }),
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok.mock.calls[0]?.[0]).toEqual({
+      decision: "block",
+      reason:
+        "Current branch has an open PR that is not merge-ready. Run `bellwether check --watch` and address the reported CI or review issues before stopping.",
     });
   });
 });
