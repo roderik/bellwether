@@ -48,10 +48,10 @@ function setupStopMocks(branch: string, prNumber: number | null) {
     token: "token",
     proxyFetch: vi.fn(),
   });
-  if (prNumber !== null) {
-    mockFindPRForBranch.mockResolvedValue({ number: prNumber });
-  } else {
+  if (prNumber === null) {
     mockFindPRForBranch.mockResolvedValue(null);
+  } else {
+    mockFindPRForBranch.mockResolvedValue({ number: prNumber });
   }
 }
 
