@@ -102,7 +102,7 @@ DO NOT start Step C until the commit exists and is pushed.
 
 ### Step C: Reply to AND resolve ALL threads
 
-**Every single review thread MUST be both replied to AND resolved.** Unresolved threads block `pr.ready=true`. Leaving threads open is a bug in your execution, not an acceptable outcome.
+**Every single review thread MUST be both replied to AND resolved.** Treat any thread left formally open as unfinished work and a bug in your execution, not an acceptable outcome.
 
 EVERY reply MUST use `--resolve`. NEVER use `--reply` without `--resolve`. `--resolve` marks review threads as resolved in GitHub — always include it so threads don't stay open.
 
