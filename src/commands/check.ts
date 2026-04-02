@@ -123,7 +123,7 @@ export const checkCommand = {
     interval: z.coerce.number().default(30).describe("Poll interval in seconds"),
     timeout: z.coerce.number().default(1800).describe("Timeout in seconds"),
     unresolved: z.boolean().default(false).describe("Show only unresolved comments"),
-    unanswered: z.boolean().default(true).describe("Show only unanswered comments"),
+    unanswered: z.boolean().default(false).describe("Show only unanswered comments"),
     botsOnly: z.boolean().default(false).describe("Only bot comments"),
     humansOnly: z.boolean().default(false).describe("Only human comments"),
     reply: z.string().optional().describe("Reply to comment: <id>:<message>"),
