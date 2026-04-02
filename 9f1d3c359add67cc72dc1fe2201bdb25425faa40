@@ -1,0 +1,27 @@
+test/commands/hook-check.test.ts
+  0da96db13c92325b 51,430,443-525
+src/commands/hook-check.ts
+  0da96db13c92325b 150-162,164-176
+SKILL.md
+  0da96db13c92325b 125-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "9f1d3c359add67cc72dc1fe2201bdb25425faa40",
+  "prompts": {
+    "0da96db13c92325b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9720bed6-38f4-4116-9658-3b6c3e621cde",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer",
+      "messages": [],
+      "total_additions": 113,
+      "total_deletions": 12,
+      "accepted_lines": 113,
+      "overriden_lines": 0
+    }
+  }
+}
