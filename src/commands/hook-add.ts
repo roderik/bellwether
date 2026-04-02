@@ -61,6 +61,20 @@ async function configureClaude(): Promise<string> {
   cleaned.push(buildClaudeHooks());
 
   hooks.PostToolUse = cleaned;
+
+  // Stop hooks — block stopping when PR has actionable work
+  interface StopGroup {
+    hooks: { type: string; command: string; timeout?: number }[];
+  }
+  const stopHooks = (hooks.Stop ?? []) as StopGroup[];
+  const cleanedStop = stopHooks.filter(
+    (group) => !group.hooks.some((h) => h.command.includes(BELLWETHER_MARKER)),
+  );
+  cleanedStop.push({
+    hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT }],
+  });
+  hooks.Stop = cleanedStop;
+
   settings.hooks = hooks;
 
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n");
