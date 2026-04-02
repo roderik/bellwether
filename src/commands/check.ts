@@ -15,10 +15,17 @@ import {
   commentSchema,
 } from "./reviews.js";
 
+interface ReviewFilterOptions {
+  unresolved: boolean;
+  unanswered: boolean;
+  botsOnly: boolean;
+  humansOnly: boolean;
+}
+
 function buildPRSection(
   mergeState: PRMergeState,
   ciStatus: CIStatus,
-  unresolvedCount: number,
+  actionableReviewCount: number,
 ): { state: string; mergeable: string; ready: boolean } {
   return {
     state: mergeState.state,
@@ -28,8 +35,57 @@ function buildPRSection(
       mergeState.mergeableState === "clean" &&
       ciStatus.failing === 0 &&
       ciStatus.pending === 0 &&
-      unresolvedCount === 0,
+      actionableReviewCount === 0,
   };
+}
+
+function isActionableReview(
+  comment: { isResolved: boolean; hasHumanReply: boolean; hasAnyReply: boolean },
+  filterOpts: ReviewFilterOptions,
+): boolean {
+  if (filterOpts.unresolved) {
+    return !(comment.isResolved || comment.hasHumanReply);
+  }
+  if (filterOpts.unanswered) {
+    return !comment.hasAnyReply;
+  }
+  return !(comment.isResolved || comment.hasHumanReply);
+}
+
+function getActionableReviewIds(
+  comments: {
+    id: number;
+    isResolved: boolean;
+    hasHumanReply: boolean;
+    hasAnyReply: boolean;
+  }[],
+  filterOpts: ReviewFilterOptions,
+): number[] {
+  return comments
+    .filter((comment) => isActionableReview(comment, filterOpts))
+    .map((comment) => comment.id);
+}
+
+function getFailureKeys(status: CIStatus): string[] {
+  return status.failures.map((failure) => `${failure.name}:${failure.conclusion}`);
+}
+
+function buildWatchSnapshotKey(params: {
+  headSha: string;
+  mergeableState: string;
+  status: CIStatus;
+  actionableReviewIds: number[];
+}): string {
+  const { headSha, mergeableState, status, actionableReviewIds } = params;
+  const sortedActionableReviewIds = actionableReviewIds.toSorted((a, b) => a - b);
+  return JSON.stringify({
+    headSha,
+    mergeableState,
+    passing: status.passing,
+    failing: status.failing,
+    pending: status.pending,
+    actionableReviewIds: sortedActionableReviewIds,
+  });
 }
 
 interface CheckCommandContext {
@@ -53,7 +109,7 @@ interface CheckCommandContext {
 
 export const checkCommand = {
   description: "Show CI status and review comments for a PR",
-  hint: "Combines CI checks and review comments. Use --reply and --detail for review actions. With --watch, returns immediately when there is actionable work (CI failures, unresolved reviews), only polls while CI is pending with nothing to do.",
+  hint: "Combines CI checks and review comments. Use --reply and --detail for review actions. With --watch, returns immediately if there is already actionable work; otherwise it waits for new actionable work, merge-ready state, terminal PR state, or inactivity timeout.",
   args: z.object({
     pr: z.coerce.number().optional().describe("PR number (auto-detects from branch)"),
   }),
@@ -62,7 +118,7 @@ export const checkCommand = {
       .boolean()
       .default(false)
       .describe(
-        "Poll until actionable: returns on CI failure, unresolved reviews, all passing, merge conflict, or timeout",
+        "Poll until merge-ready or actionable: returns immediately for existing work, otherwise waits for new CI failures, new review comments, merge conflicts, terminal PR state, or inactivity timeout",
       ),
     interval: z.coerce.number().default(30).describe("Poll interval in seconds"),
     timeout: z.coerce.number().default(1800).describe("Timeout in seconds"),
@@ -102,7 +158,7 @@ export const checkCommand = {
         ready: z
           .boolean()
           .describe(
-            "true when state=open, mergeableState=clean, all CI passing, zero unresolved reviews",
+            "true when state=open, mergeableState=clean, all CI passing, zero actionable review comments",
           ),
         synced: z
           .boolean()
@@ -130,7 +186,7 @@ export const checkCommand = {
   }),
   examples: [
     { description: "CI status + review comments for current branch" },
-    { options: { watch: true }, description: "Watch until CI completes" },
+    { options: { watch: true }, description: "Watch until the PR is ready or actionable" },
     { options: { unresolved: true }, description: "Show only unresolved reviews" },
     { options: { detail: 456 }, description: "Full detail for comment 456" },
     { options: { reply: "456:Fixed in latest commit" }, description: "Reply to comment" },
@@ -163,14 +219,22 @@ export const checkCommand = {
       humansOnly: opts.humansOnly,
     };
 
-    // Watch mode — poll until there is actionable work or CI reaches terminal state.
-    // Returns immediately when: CI fails, unresolved reviews exist, merge conflict,
-    // all passing, or timeout. Only keeps polling when CI is pending AND there is
-    // nothing actionable (no failures, no unresolved reviews).
+    // Watch mode — poll until the PR is merge-ready, actionable work appears, the
+    // PR reaches a terminal state, or the watch times out. Keep polling while the
+    // PR is still not ready but there is nothing local to fix yet, for example
+    // pending external checks or GitHub reporting mergeability as blocked/unstable.
     if (opts.watch) {
-      const start = Date.now();
       let syncAttempted = false;
       let pollCount = 0;
+      let baseline:
+        | {
+            headSha: string;
+            actionableReviewIds: Set<number>;
+            failureKeys: Set<string>;
+          }
+        | undefined;
+      let lastProgressAt = Date.now();
+      let lastSnapshotKey: string | undefined;
       while (true) {
         pollCount++;
         // Fetch merge state first so headSha is always current before CI fetch
@@ -181,6 +245,16 @@ export const checkCommand = {
           ctx.token,
           ctx.proxyFetch,
         );
+
+        if (mergeState.state !== "open") {
+          return c.ok({
+            pr: {
+              state: mergeState.state,
+              mergeable: mergeState.mergeableState,
+              ready: false,
+            },
+          });
+        }
 
         // Branch behind base — auto-sync once, then continue polling
         if (mergeState.mergeableState === "behind" && !syncAttempted) {
@@ -253,14 +327,23 @@ export const checkCommand = {
         ]);
 
         const reviewsFlat = formatReviewsSection(reviewData.comments);
-        const unresolvedCount = reviewData.comments.filter(
-          (cm) => !(cm.isResolved || cm.hasHumanReply),
-        ).length;
-        const prSection = buildPRSection(mergeState, status, unresolvedCount);
+        const actionableReviewIds = getActionableReviewIds(reviewData.comments, filterOpts);
+        const actionableReviewCount = actionableReviewIds.length;
+        const failureKeys = getFailureKeys(status);
+        const prSection = buildPRSection(mergeState, status, actionableReviewCount);
         const prSectionWithSync = syncAttempted ? { ...prSection, synced: true } : prSection;
+        const snapshotKey = buildWatchSnapshotKey({
+          headSha: mergeState.headSha,
+          mergeableState: mergeState.mergeableState,
+          status,
+          actionableReviewIds,
+        });
+        if (lastSnapshotKey !== undefined && lastSnapshotKey !== snapshotKey) {
+          lastProgressAt = Date.now();
+        }
+        lastSnapshotKey = snapshotKey;
 
-        // Terminal: all passing, no unresolved reviews
-        if (status.failing === 0 && status.pending === 0 && unresolvedCount === 0) {
+        if (prSection.ready) {
           return c.ok({
             pr: prSectionWithSync,
             ci: { ...ciFlat, allPassing: true },
@@ -268,8 +351,14 @@ export const checkCommand = {
           });
         }
 
-        // Actionable: CI failures exist — return so caller can fix them
-        if (status.failing > 0) {
+        const currentBaseline = baseline;
+        const hasNewCIFailures =
+          status.failing > 0 &&
+          (currentBaseline === undefined ||
+            mergeState.headSha !== currentBaseline.headSha ||
+            failureKeys.some((key) => !currentBaseline.failureKeys.has(key)));
+
+        if (hasNewCIFailures) {
           return c.ok(
             {
               pr: prSectionWithSync,
@@ -285,8 +374,12 @@ export const checkCommand = {
           );
         }
 
-        // Actionable: unresolved reviews — return so caller can address them
-        if (unresolvedCount > 0) {
+        const hasNewActionableReviews =
+          actionableReviewCount > 0 &&
+          (currentBaseline === undefined ||
+            actionableReviewIds.some((id) => !currentBaseline.actionableReviewIds.has(id)));
+
+        if (hasNewActionableReviews) {
           return c.ok(
             {
               pr: prSectionWithSync,
@@ -304,13 +397,21 @@ export const checkCommand = {
           );
         }
 
-        // Nothing actionable, CI still pending — keep polling
-        const elapsed = Math.round((Date.now() - start) / 1000);
+        if (baseline === undefined || mergeState.headSha !== baseline.headSha) {
+          baseline = {
+            headSha: mergeState.headSha,
+            actionableReviewIds: new Set(actionableReviewIds),
+            failureKeys: new Set(failureKeys),
+          };
+        }
+
+        // Nothing actionable yet and the PR is still not ready — keep polling
+        const idle = Math.round((Date.now() - lastProgressAt) / 1000);
         process.stderr.write(
-          `[watch] poll ${pollCount} (${elapsed}s) — ${status.passing}/${status.total} passing, ${status.pending} pending, ${status.failing} failing\n`,
+          `[watch] poll ${pollCount} (${idle}s idle) — sha=${mergeState.headSha.slice(0, 7)}, mergeable=${mergeState.mergeableState}, ready=${prSection.ready}, ${status.passing}/${status.total} passing, ${status.pending} pending, ${status.failing} failing\n`,
         );
 
-        if (elapsed >= opts.timeout) {
+        if (idle >= opts.timeout) {
           return c.ok(
             {
               pr: prSectionWithSync,
@@ -319,11 +420,11 @@ export const checkCommand = {
             },
             {
               cta: {
-                description: "Timed out, checks still running:",
+                description: "Timed out waiting for new actionable work:",
                 commands: [
                   {
                     command: `check --watch --timeout ${opts.timeout * 2}`,
-                    description: "Retry with longer timeout",
+                    description: "Keep watching with a longer inactivity timeout",
                   },
                 ],
               },
@@ -416,29 +517,36 @@ export const checkCommand = {
     ]);
 
     const reviewsFlat = formatReviewsSection(reviewData.comments);
-    const unresolvedCount = reviewData.comments.filter(
-      (cm) => !(cm.isResolved || cm.hasHumanReply),
-    ).length;
-    const prSection = buildPRSection(mergeState, status, unresolvedCount);
+    const actionableReviewCount = getActionableReviewIds(reviewData.comments, filterOpts).length;
+    const prSection = buildPRSection(mergeState, status, actionableReviewCount);
+    let cta:
+      | {
+          description: string;
+          commands: { command: string; description: string }[];
+        }
+      | undefined;
 
-    return c.ok(
-      { pr: prSection, ci: ciFlat, reviews: reviewsFlat },
-      {
-        cta:
-          status.pending > 0
-            ? {
-                description: "Checks still running:",
-                commands: [{ command: "check --watch", description: "Watch until complete" }],
-              }
-            : status.failing > 0
-              ? {
-                  description: "Checks failing:",
-                  commands: [
-                    { command: "check --unresolved", description: "Show unresolved reviews" },
-                  ],
-                }
-              : undefined,
-      },
-    );
+    if (status.pending > 0) {
+      cta = {
+        description: "Checks still running:",
+        commands: [
+          { command: "check --watch", description: "Watch until merge-ready or terminal" },
+        ],
+      };
+    } else if (status.failing > 0) {
+      cta = {
+        description: "Checks failing:",
+        commands: [{ command: "check --watch", description: "Watch until checks are re-run" }],
+      };
+    } else if (prSection.ready) {
+      cta = undefined;
+    } else {
+      cta = {
+        description: `PR is not merge-ready yet (mergeable: ${prSection.mergeable}):`,
+        commands: [{ command: "check --watch", description: "Keep watching until ready" }],
+      };
+    }
+
+    return c.ok({ pr: prSection, ci: ciFlat, reviews: reviewsFlat }, { cta });
   },
 };

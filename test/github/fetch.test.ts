@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getProxyFetch, ghFetch, fetchAllPages } from "../../src/github/fetch.js";
+import {
+  getProxyFetch,
+  ghFetch,
+  fetchAllPages,
+  type ProxyFetch,
+} from "../../src/github/fetch.js";
 
 beforeEach(() => {
   delete process.env.HTTPS_PROXY;
@@ -45,7 +50,7 @@ describe("getProxyFetch", () => {
       json: async () => ({ data: true }),
     };
     const original = globalThis.fetch;
-    globalThis.fetch = vi.fn(async () => mockResponse) as any as typeof globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => mockResponse) as unknown as typeof globalThis.fetch;
 
     try {
       const pf = getProxyFetch();
@@ -90,9 +95,9 @@ describe("ghFetch", () => {
         text: async () => "",
         json: async () => ({}),
       };
-    });
+    }) as unknown as ProxyFetch;
 
-    await ghFetch("https://api.github.com/test", "my-token", pf as any);
+    await ghFetch("https://api.github.com/test", "my-token", pf);
 
     const headers = capturedOptions!.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer my-token");
@@ -111,9 +116,9 @@ describe("ghFetch", () => {
         text: async () => "",
         json: async () => ({}),
       };
-    });
+    }) as unknown as ProxyFetch;
 
-    await ghFetch("https://api.github.com/test", "tok", pf as any, {
+    await ghFetch("https://api.github.com/test", "tok", pf, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });

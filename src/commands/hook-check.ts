@@ -1,54 +1,178 @@
+import { spawnSync } from "node:child_process";
 import { z } from "incur";
-import { execFileSync } from "node:child_process";
+import { bootstrap } from "../context.js";
+import { findPRForBranch, getCurrentBranch } from "../github/index.js";
 
 const PR_PATTERN = /\bgit\s+push\b|\bgh\s+pr\s+(create|ready)\b/;
+const DEFAULT_POST_TOOL_USE_EVENT = "PostToolUse";
+const STOP_EVENT = "Stop";
+const CONTINUE_REASON =
+  "Current branch has an open PR that is not merge-ready. Run `bellwether check --watch` and address the reported CI or review issues before stopping.";
 
-interface CheckOutput {
-  pr?: { state: string; ready: boolean };
-  ci?: Record<string, string | number | boolean>;
-  reviews?: Record<string, string | number>;
+interface HookInput {
+  hook_event_name?: string;
+  last_assistant_message?: string | null;
+  stop_hook_active?: boolean;
+  tool_input?: { command?: string };
 }
 
-export function evaluatePRState(): { decision: "block"; reason: string } | null {
+interface BellwetherCheckOutput {
+  pr?: {
+    mergeable?: string;
+    ready?: boolean;
+    state?: string;
+  };
+  ci?: Record<string, string | number | boolean>;
+  reviews?: Record<string, string | number>;
+  cta?: {
+    description?: string;
+  };
+}
+
+interface CurrentBranchPR {
+  branch: string | null;
+  prNumber: number | null;
+  error?: string;
+}
+
+function normalizeStdinChunk(chunk: Buffer | string | Uint8Array): Buffer {
+  if (typeof chunk === "string") {
+    return Buffer.from(chunk);
+  }
+  if (Buffer.isBuffer(chunk)) {
+    return chunk;
+  }
+  return Buffer.from(chunk);
+}
+
+function parseHookInput(stdin: (Buffer | string | Uint8Array)[]): HookInput | null {
   try {
-    const raw = execFileSync("bellwether", ["check", "--format", "json"], {
-      encoding: "utf-8",
-      timeout: 12000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    const data = JSON.parse(raw) as CheckOutput;
-
-    // No PR or not open — allow stop
-    if (!data.pr || data.pr.state !== "open") return null;
-    // Already merge-ready — allow stop
-    if (data.pr.ready) return null;
-
-    const hasFailingCI = Object.keys(data.ci ?? {}).some((k) => k.startsWith("FAIL "));
-    const totalStr = String(data.reviews?.total ?? "0 unresolved");
-    const match = totalStr.match(/^(\d+)\s+unresolved/);
-    const unresolvedCount = match ? Number(match[1]) : 0;
-
-    // Only failing CI or unresolved reviews block stopping
-    if (!hasFailingCI && unresolvedCount === 0) return null;
-
-    const parts: string[] = [];
-    if (hasFailingCI) parts.push("failing CI checks");
-    if (unresolvedCount > 0)
-      parts.push(`${unresolvedCount} unresolved review comment${unresolvedCount === 1 ? "" : "s"}`);
-
-    return {
-      decision: "block",
-      reason: `PR has ${parts.join(" and ")}. Run \`bellwether check --watch\` to continue.`,
-    };
+    return JSON.parse(Buffer.concat(stdin.map(normalizeStdinChunk)).toString()) as HookInput;
   } catch {
-    // bellwether check failed (no PR, no auth, not in git repo) — allow stop
     return null;
   }
 }
 
+function runBellwetherCheck(prNumber: number): { output?: BellwetherCheckOutput; error?: string } {
+  const result = spawnSync("bellwether", ["check", String(prNumber), "--format", "json"], {
+    encoding: "utf-8",
+  });
+
+  if (result.status !== 0) {
+    const stdMessage = result.stderr.trim() || result.stdout.trim();
+    const errorDetail = result.error instanceof Error ? result.error.message : undefined;
+    const message =
+      stdMessage.length > 0
+        ? stdMessage
+        : errorDetail
+          ? `bellwether check failed: ${errorDetail}`
+          : `bellwether check exited with status ${result.status ?? "unknown"}`;
+    return { error: message };
+  }
+
+  const stdout = result.stdout.trim();
+  if (!stdout) {
+    return { error: "bellwether check returned no output" };
+  }
+
+  try {
+    return { output: JSON.parse(stdout) as BellwetherCheckOutput };
+  } catch {
+    return { error: "bellwether check returned invalid JSON" };
+  }
+}
+
+async function resolveCurrentBranchPR(): Promise<CurrentBranchPR> {
+  const branch = getCurrentBranch();
+  if (!branch || branch === "main" || branch === "master") {
+    return { branch, prNumber: null };
+  }
+
+  try {
+    const ctx = await bootstrap();
+    const pr = await findPRForBranch(
+      ctx.repoInfo.owner,
+      ctx.repoInfo.repo,
+      branch,
+      ctx.token,
+      ctx.proxyFetch,
+    );
+    return { branch, prNumber: pr?.number ?? null };
+  } catch (error) {
+    return {
+      branch,
+      prNumber: null,
+      error: error instanceof Error ? error.message : "PR detection failed",
+    };
+  }
+}
+
+async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; reason?: string }> {
+  if (input.stop_hook_active) {
+    return {};
+  }
+
+  const { branch, prNumber, error: prResolutionError } = await resolveCurrentBranchPR();
+  if (prResolutionError) {
+    return {
+      decision: "block",
+      reason: `Current branch ${branch} may have an open PR, but Bellwether could not determine that (${prResolutionError}). Run \`bellwether check --watch\` before stopping.`,
+    };
+  }
+
+  if (!prNumber) {
+    return {};
+  }
+
+  const { output, error } = runBellwetherCheck(prNumber);
+  if (error) {
+    return {
+      decision: "block",
+      reason: `Current branch has open PR #${prNumber}, but Bellwether could not verify it (${error}). Run \`bellwether check --watch\` before stopping.`,
+    };
+  }
+
+  if (!output?.pr || output.pr.state !== "open") {
+    return {};
+  }
+
+  if (output.pr.ready === true) {
+    return {};
+  }
+
+  if (output.pr.ready === undefined) {
+    return {
+      decision: "block",
+      reason: `Current branch has open PR #${prNumber}, but Bellwether could not verify whether it is merge-ready from the CLI output. This may indicate an older or incompatible Bellwether CLI. Run \`bellwether check --watch\` with an up-to-date CLI before stopping.`,
+    };
+  }
+
+  // Allow stopping when the only blocker is missing review approval:
+  // no failing CI checks and no unresolved review comments means nothing actionable.
+  const hasFailingCI = Object.keys(output.ci ?? {}).some((k) => k.startsWith("FAIL "));
+  const totalStr = String(output.reviews?.total ?? "0 unresolved");
+  const unresolvedMatch = totalStr.match(/^(\d+)\s+unresolved/);
+  const unresolvedCount = unresolvedMatch ? Number(unresolvedMatch[1]) : 0;
+
+  if (!hasFailingCI && unresolvedCount === 0) {
+    return {};
+  }
+
+  const mergeable =
+    typeof output.pr.mergeable === "string" ? ` (mergeable: ${output.pr.mergeable})` : "";
+  const cta =
+    typeof output.cta?.description === "string" && output.cta.description.trim().length > 0
+      ? ` ${output.cta.description}`
+      : "";
+  return {
+    decision: "block",
+    reason: `${CONTINUE_REASON}${mergeable}${cta}`,
+  };
+}
+
 export const hookCheckCommand = {
   description:
-    "PostToolUse and Stop hook handler — reads hook event from stdin, returns hook output",
+    "PostToolUse and Stop hook handler — reads hook event from stdin and returns hook output",
   output: z.object({
     hookSpecificOutput: z
       .object({
@@ -56,49 +180,40 @@ export const hookCheckCommand = {
         additionalContext: z.string(),
       })
       .optional(),
-    decision: z.string().optional(),
+    decision: z.literal("block").optional(),
     reason: z.string().optional(),
   }),
   async run(c: {
     ok: (data: {
       hookSpecificOutput?: { hookEventName: string; additionalContext: string };
-      decision?: string;
+      decision?: "block";
       reason?: string;
     }) => unknown;
   }) {
-    const chunks: Buffer[] = [];
+    const chunks: (Buffer | string | Uint8Array)[] = [];
     for await (const chunk of process.stdin) {
-      chunks.push(chunk as Buffer);
+      chunks.push(chunk as Buffer | string | Uint8Array);
     }
 
-    try {
-      const input = JSON.parse(Buffer.concat(chunks).toString()) as {
-        tool_input?: { command?: string };
-        hook_event_name?: string;
-      };
+    const input = parseHookInput(chunks);
+    if (!input) {
+      return c.ok({});
+    }
 
-      // Stop hook — check if PR has actionable work before allowing stop
-      if (input.hook_event_name === "Stop") {
-        const result = evaluatePRState();
-        if (result) {
-          return c.ok({ decision: result.decision, reason: result.reason });
-        }
-        return c.ok({});
-      }
+    const eventName = input.hook_event_name ?? DEFAULT_POST_TOOL_USE_EVENT;
+    if (eventName === STOP_EVENT) {
+      return c.ok(await handleStopHook(input));
+    }
 
-      // PostToolUse hook — nudge to watch CI/reviews after PR-related commands
-      const command = input.tool_input?.command ?? "";
-      if (PR_PATTERN.test(command)) {
-        return c.ok({
-          hookSpecificOutput: {
-            hookEventName: input.hook_event_name ?? "PostToolUse",
-            additionalContext:
-              "PR pushed. Run `bellwether check --watch` to monitor CI and reviews until merge-ready.",
-          },
-        });
-      }
-    } catch {
-      // Malformed input — return empty
+    const command = input.tool_input?.command ?? "";
+    if (PR_PATTERN.test(command)) {
+      return c.ok({
+        hookSpecificOutput: {
+          hookEventName: eventName,
+          additionalContext:
+            "PR pushed. Run `bellwether check --watch` to monitor CI and reviews until merge-ready.",
+        },
+      });
     }
 
     return c.ok({});

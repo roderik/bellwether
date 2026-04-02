@@ -17,7 +17,7 @@ IMPORTANT: Execute ALL work in the main thread. Do NOT use the Agent tool, Task 
 
 ## Critical: Use the bellwether CLI
 
-- The ONLY way to check CI status, PR state, and reviews is `bellwether check --watch`. This command returns as soon as there is actionable work (CI failures, unresolved reviews) or when all checks pass. It only polls while CI is pending with nothing to do. Do NOT add sleep or polling.
+- The ONLY way to check CI status, PR state, and reviews is `bellwether check --watch`. This command returns only when the PR is actually merge-ready (`pr.ready=true`), when actionable work appears (CI failures, unresolved reviews, merge conflicts), when the PR reaches a terminal state (`merged` or `closed`), or on timeout. It keeps polling while the PR is still not ready but there is nothing local to fix yet, including pending external checks and `mergeable=blocked|unstable|unknown`. Do NOT add sleep or polling.
 - NEVER use `gh api`, `gh pr checks`, `gh pr view --json`, `gh api repos/*/check-runs`, or any manual GitHub API calls to check CI or review status.
 - NEVER use `sleep` to wait for CI. The `--watch` flag handles waiting internally.
 - NEVER parse review comments manually via `gh api`. The bellwether CLI returns them in structured format.
@@ -49,7 +49,7 @@ When `bellwether check --watch` returns, apply the first matching rule:
 ## The Loop
 
 ```
-1. bellwether check --watch        (returns when actionable: CI failures, unresolved reviews, all passing, or timeout; DO NOT substitute with gh/GitHub API calls — use this exact command)
+1. bellwether check --watch        (returns only on pr.ready=true, actionable work, merged/closed PR state, or timeout; DO NOT substitute with gh/GitHub API calls — use this exact command)
 2. Apply the Decision Table above — the first matching rule determines your action
 3. If timed out -> go to 1 (restart watch)
 ```
@@ -61,6 +61,8 @@ Three sections:
 - **pr** — `state` (open/closed/merged), `mergeable` (clean/dirty/behind/blocked/unstable), `ready` (true when all conditions met)
 - **ci** — SHA, check summary, and for each failing check: the filtered error log with file paths and line numbers
 - **reviews** — unresolved review comments with full body, file path, and line number
+
+Important: `allPassing=true` is not sufficient on its own. The only success condition is `pr.ready=true`.
 
 ## Phase 1: Fix CI failures
 
@@ -102,18 +104,19 @@ DO NOT start Step C until the commit exists and is pushed.
 
 **Every single review thread MUST be both replied to AND resolved.** Unresolved threads block `pr.ready=true`. Leaving threads open is a bug in your execution, not an acceptable outcome.
 
-For inline code review comments (with file path), reply individually with `--resolve`:
+EVERY reply MUST use `--resolve`. NEVER use `--reply` without `--resolve`. `--resolve` marks review threads as resolved in GitHub — always include it so threads don't stay open.
+
+Reply to each comment individually — one `bellwether check --reply ... --resolve` call per comment:
 
 ```bash
+# Fixed something
 bellwether check --reply "<id>:Fixed in <hash>. <description>" --resolve
-```
 
-For top-level bot comments (no file path), post a single summary reply with `--resolve`:
+# Won't fix / false positive
+bellwether check --reply "<id>:Won't fix — <reason>" --resolve
 
-```bash
-bellwether check --reply "<id>:Addressed review findings in <hash>:
-- REVIEW 456: Fixed null check in src/foo.ts
-- REVIEW 789: Won't fix — pattern is intentional" --resolve
+# Already addressed
+bellwether check --reply "<id>:Already handled — <explanation>" --resolve
 ```
 
 **Rules for thread resolution:**

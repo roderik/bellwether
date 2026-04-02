@@ -30,6 +30,24 @@ const mockSpawnSync = vi.mocked(spawnSync);
 const mockReadFile = vi.mocked(readFile);
 const mockRm = vi.mocked(rm);
 
+function asReadFileResult(value: string) {
+  return value as Awaited<ReturnType<typeof readFile>>;
+}
+
+function asSpawnResult(
+  value: Partial<ReturnType<typeof spawnSync>>,
+): ReturnType<typeof spawnSync> {
+  return {
+    stdout: "",
+    status: 0,
+    stderr: "",
+    pid: 1,
+    output: [],
+    signal: null,
+    ...value,
+  } as ReturnType<typeof spawnSync>;
+}
+
 beforeEach(() => {
   delete process.env.HTTPS_PROXY;
   delete process.env.https_proxy;
@@ -45,20 +63,13 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     const pf = getProxyFetch();
 
     // Mock curl execution
-    mockSpawnSync.mockReturnValue({
-      stdout: "200",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
 
     // Mock file reads for body and headers
     mockReadFile
-      .mockResolvedValueOnce('{"result": true}' as any) // body file
+      .mockResolvedValueOnce(asReadFileResult('{"result": true}')) // body file
       .mockResolvedValueOnce(
-        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nx-custom: val\r\n" as any,
+        asReadFileResult("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nx-custom: val\r\n"),
       ); // headers file
 
     mockRm.mockResolvedValue(undefined);
@@ -89,17 +100,10 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
     const pf = getProxyFetch();
 
-    mockSpawnSync.mockReturnValue({
-      stdout: "404",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "404" }));
     mockReadFile
-      .mockResolvedValueOnce("Not found" as any)
-      .mockResolvedValueOnce("HTTP/1.1 404 Not Found\r\n" as any);
+      .mockResolvedValueOnce(asReadFileResult("Not found"))
+      .mockResolvedValueOnce(asReadFileResult("HTTP/1.1 404 Not Found\r\n"));
     mockRm.mockResolvedValue(undefined);
 
     const result = await pf("https://api.github.com/missing");
@@ -111,17 +115,10 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
     const pf = getProxyFetch();
 
-    mockSpawnSync.mockReturnValue({
-      stdout: "200",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
     mockReadFile
-      .mockResolvedValueOnce("" as any)
-      .mockResolvedValueOnce("HTTP/1.1 200 OK\r\n" as any);
+      .mockResolvedValueOnce(asReadFileResult(""))
+      .mockResolvedValueOnce(asReadFileResult("HTTP/1.1 200 OK\r\n"));
     mockRm.mockResolvedValue(undefined);
 
     const result = await pf("https://api.github.com/empty");
@@ -132,18 +129,13 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
     const pf = getProxyFetch();
 
-    mockSpawnSync.mockReturnValue({
-      stdout: "200",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
     mockReadFile
-      .mockResolvedValueOnce("{}" as any)
+      .mockResolvedValueOnce(asReadFileResult("{}"))
       .mockResolvedValueOnce(
-        "HTTP/1.1 302 Found\r\nlocation: /other\r\n\r\nHTTP/1.1 200 OK\r\ncontent-type: text/plain\r\n" as any,
+        asReadFileResult(
+          "HTTP/1.1 302 Found\r\nlocation: /other\r\n\r\nHTTP/1.1 200 OK\r\ncontent-type: text/plain\r\n",
+        ),
       );
     mockRm.mockResolvedValue(undefined);
 
@@ -155,15 +147,10 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
     const pf = getProxyFetch();
 
-    mockSpawnSync.mockReturnValue({
-      stdout: "200",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
-    mockReadFile.mockResolvedValueOnce("{}" as any).mockResolvedValueOnce("" as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
+    mockReadFile
+      .mockResolvedValueOnce(asReadFileResult("{}"))
+      .mockResolvedValueOnce(asReadFileResult(""));
     mockRm.mockResolvedValue(undefined);
 
     const result = await pf("https://api.github.com/test");
@@ -174,14 +161,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
     const pf = getProxyFetch();
 
-    mockSpawnSync.mockReturnValue({
-      stdout: "200",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
     mockReadFile.mockRejectedValueOnce(new Error("read fail"));
     mockRm.mockResolvedValue(undefined);
 
@@ -193,17 +173,10 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
     const pf = getProxyFetch();
 
-    mockSpawnSync.mockReturnValue({
-      stdout: "200",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
     mockReadFile
-      .mockResolvedValueOnce("{}" as any)
-      .mockResolvedValueOnce("HTTP/1.1 200 OK\r\n" as any);
+      .mockResolvedValueOnce(asReadFileResult("{}"))
+      .mockResolvedValueOnce(asReadFileResult("HTTP/1.1 200 OK\r\n"));
     mockRm.mockResolvedValue(undefined);
 
     await pf("https://api.github.com/test");
@@ -221,17 +194,12 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
     const pf = getProxyFetch();
 
-    mockSpawnSync.mockReturnValue({
-      stdout: "200",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
     mockReadFile
-      .mockResolvedValueOnce("{}" as any)
-      .mockResolvedValueOnce("HTTP/1.1 200 OK\r\nno-colon-line\r\nreal-header: value\r\n" as any);
+      .mockResolvedValueOnce(asReadFileResult("{}"))
+      .mockResolvedValueOnce(
+        asReadFileResult("HTTP/1.1 200 OK\r\nno-colon-line\r\nreal-header: value\r\n"),
+      );
     mockRm.mockResolvedValue(undefined);
 
     const result = await pf("https://api.github.com/test");
@@ -243,15 +211,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
     const pf = getProxyFetch();
 
-    mockSpawnSync.mockReturnValue({
-      stdout: "",
-      status: null,
-      stderr: "",
-      pid: 0,
-      output: [],
-      signal: null,
-      error: new Error("ENOENT"),
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ status: null, pid: 0, error: new Error("ENOENT") }));
     mockRm.mockResolvedValue(undefined);
 
     await expect(pf("https://api.github.com/test")).rejects.toThrow("curl failed to start: ENOENT");
@@ -261,14 +221,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
     const pf = getProxyFetch();
 
-    mockSpawnSync.mockReturnValue({
-      stdout: "",
-      status: 7,
-      stderr: "Connection refused",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({ status: 7, stderr: "Connection refused" }));
     mockRm.mockResolvedValue(undefined);
 
     await expect(pf("https://api.github.com/test")).rejects.toThrow(
@@ -280,14 +233,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
     const pf = getProxyFetch();
 
-    mockSpawnSync.mockReturnValue({
-      stdout: "",
-      status: 0,
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
+    mockSpawnSync.mockReturnValue(asSpawnResult({}));
     mockRm.mockResolvedValue(undefined);
 
     await expect(pf("https://api.github.com/test")).rejects.toThrow(

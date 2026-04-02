@@ -5,6 +5,7 @@ import {
   fetchPRComments,
   replyToComment,
   resolveThread,
+  TRACKING_COMMENT_MARKER,
   type ProcessedComment,
 } from "../../src/github/comments.js";
 
@@ -144,6 +145,54 @@ describe("processComments", () => {
     expect(result[0].type).toBe("issue_comment");
     expect(result[0].path).toBeNull();
     expect(result[0].replies).toEqual([]);
+    expect(result[0].hasAnyReply).toBe(false);
+  });
+
+  it("detects old-style reply to issue comment", () => {
+    const result = processComments({
+      reviewComments: [],
+      issueComments: [
+        makeIssueComment({ id: 100 }),
+        makeIssueComment({ id: 101, body: "> Re: comment 100\n\nHandled" }),
+      ],
+      reviews: [],
+    });
+    // Only the original comment appears (reply is meta-filtered)
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(100);
+    expect(result[0].hasAnyReply).toBe(true);
+  });
+
+  it("detects tracking comment reply to issue comment", () => {
+    const result = processComments({
+      reviewComments: [],
+      issueComments: [
+        makeIssueComment({ id: 100 }),
+        makeIssueComment({ id: 200 }),
+        makeIssueComment({
+          id: 300,
+          body: `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — Fixed\n- Re: comment 200 — Done`,
+        }),
+      ],
+      reviews: [],
+    });
+    expect(result).toHaveLength(2);
+    expect(result.find((c) => c.id === 100)!.hasAnyReply).toBe(true);
+    expect(result.find((c) => c.id === 200)!.hasAnyReply).toBe(true);
+  });
+
+  it("issue comment without reply has hasAnyReply false", () => {
+    const result = processComments({
+      reviewComments: [],
+      issueComments: [
+        makeIssueComment({ id: 100 }),
+        makeIssueComment({ id: 101, body: "> Re: comment 999\n\nUnrelated" }),
+      ],
+      reviews: [],
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(100);
+    expect(result[0].hasAnyReply).toBe(false);
   });
 
   it("processes human reviews with body", () => {
@@ -483,6 +532,19 @@ describe("processComments", () => {
     expect(result).toHaveLength(0);
   });
 
+  it("filters tracking comment meta-comments", () => {
+    const result = processComments({
+      reviewComments: [],
+      issueComments: [
+        makeIssueComment({
+          body: `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — Fixed`,
+        }),
+      ],
+      reviews: [],
+    });
+    expect(result).toHaveLength(0);
+  });
+
   it("also filters meta-comments from issue comments", () => {
     const result = processComments({
       reviewComments: [],
@@ -715,18 +777,135 @@ describe("replyToComment", () => {
     expect(result.html_url).toBe("https://url");
   });
 
-  it("falls back to issue comment endpoint when review reply fails", async () => {
+  it("creates new tracking comment when no existing one found", async () => {
     const pf = mockProxyFetch([
+      // review reply fails
       { ok: false, status: 404, data: {} },
-      { ok: true, status: 201, data: { html_url: "https://fallback" } },
+      // fetch existing issue comments (empty)
+      { ok: true, status: 200, data: [], headers: { link: "" } },
+      // create new tracking comment
+      { ok: true, status: 201, data: { html_url: "https://tracking-new" } },
     ]);
     const result = await replyToComment("o", "r", 1, 123, "msg", "tok", pf);
-    expect(result.html_url).toBe("https://fallback");
+    expect(result.html_url).toBe("https://tracking-new");
+    // Verify the POST body contains the tracking marker
+    // oxlint-disable-next-line typescript/no-explicit-any -- accessing mock internals
+    const postArgs = (pf.mock.calls as any)[2][1];
+    const body = JSON.parse(postArgs.body);
+    expect(body.body).toContain(TRACKING_COMMENT_MARKER);
+    expect(body.body).toContain("- Re: comment 123 — msg");
   });
 
-  it("throws when both endpoints fail", async () => {
+  it("updates existing tracking comment with re-fetch and new bullet", async () => {
+    const existingBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — First`;
+    const pf = mockProxyFetch([
+      // review reply fails with 404
+      { ok: false, status: 404, data: {} },
+      // fetch existing issue comments (has tracking comment)
+      {
+        ok: true,
+        status: 200,
+        data: [{ id: 50, body: existingBody, updated_at: "2024-01-01T00:00:00Z" }],
+        headers: { link: "" },
+      },
+      // re-fetch fresh body
+      { ok: true, status: 200, data: { id: 50, body: existingBody } },
+      // PATCH tracking comment
+      { ok: true, status: 200, data: { html_url: "https://tracking-updated" } },
+    ]);
+    const result = await replyToComment("o", "r", 1, 123, "msg", "tok", pf);
+    expect(result.html_url).toBe("https://tracking-updated");
+    // Verify the PATCH body appends the new bullet
+    // oxlint-disable-next-line typescript/no-explicit-any -- accessing mock internals
+    const patchArgs = (pf.mock.calls as any)[3][1];
+    const body = JSON.parse(patchArgs.body);
+    expect(body.body).toContain("- Re: comment 100 — First");
+    expect(body.body).toContain("- Re: comment 123 — msg");
+  });
+
+  it("picks most recently updated tracking comment", async () => {
+    const oldBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 50 — Old`;
+    const newBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — New`;
     const pf = mockProxyFetch([
       { ok: false, status: 404, data: {} },
+      {
+        ok: true,
+        status: 200,
+        data: [
+          { id: 10, body: oldBody, updated_at: "2024-01-01T00:00:00Z" },
+          { id: 20, body: newBody, updated_at: "2024-01-02T00:00:00Z" },
+        ],
+        headers: { link: "" },
+      },
+      // re-fetch fresh body for id=20 (most recent)
+      { ok: true, status: 200, data: { id: 20, body: newBody } },
+      // PATCH
+      { ok: true, status: 200, data: { html_url: "https://url" } },
+    ]);
+    const result = await replyToComment("o", "r", 1, 123, "msg", "tok", pf);
+    expect(result.html_url).toBe("https://url");
+    // Verify PATCH went to comment 20, not 10
+    // oxlint-disable-next-line typescript/no-explicit-any -- accessing mock internals
+    const patchUrl = (pf.mock.calls as any)[3][0];
+    expect(patchUrl).toContain("/issues/comments/20");
+  });
+
+  it("falls back to stale body when re-fetch fails", async () => {
+    const existingBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — First`;
+    const pf = mockProxyFetch([
+      { ok: false, status: 404, data: {} },
+      {
+        ok: true,
+        status: 200,
+        data: [{ id: 50, body: existingBody, updated_at: "2024-01-01T00:00:00Z" }],
+        headers: { link: "" },
+      },
+      // re-fetch fails
+      { ok: false, status: 500, data: {} },
+      // PATCH still works using stale body
+      { ok: true, status: 200, data: { html_url: "https://url" } },
+    ]);
+    const result = await replyToComment("o", "r", 1, 123, "msg", "tok", pf);
+    expect(result.html_url).toBe("https://url");
+  });
+
+  it("throws on non-404 review reply failure", async () => {
+    const pf = mockProxyFetch([{ ok: false, status: 500, data: "server error" }]);
+    await expect(replyToComment("o", "r", 1, 123, "msg", "tok", pf)).rejects.toThrow(
+      "Failed to reply: 500",
+    );
+  });
+
+  it("throws on auth failure without fallback", async () => {
+    const pf = mockProxyFetch([{ ok: false, status: 401, data: "unauthorized" }]);
+    await expect(replyToComment("o", "r", 1, 123, "msg", "tok", pf)).rejects.toThrow(
+      "Failed to reply: 401",
+    );
+  });
+
+  it("throws when tracking comment update fails", async () => {
+    const existingBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — First`;
+    const pf = mockProxyFetch([
+      { ok: false, status: 404, data: {} },
+      {
+        ok: true,
+        status: 200,
+        data: [{ id: 50, body: existingBody, updated_at: "2024-01-01T00:00:00Z" }],
+        headers: { link: "" },
+      },
+      // re-fetch
+      { ok: true, status: 200, data: { id: 50, body: existingBody } },
+      { ok: false, status: 500, data: "server error" },
+    ]);
+    await expect(replyToComment("o", "r", 1, 123, "msg", "tok", pf)).rejects.toThrow(
+      "Failed to update tracking comment: 500",
+    );
+  });
+
+  it("throws when tracking comment creation fails", async () => {
+    const pf = mockProxyFetch([
+      { ok: false, status: 404, data: {} },
+      { ok: true, status: 200, data: [], headers: { link: "" } },
       { ok: false, status: 500, data: "server error" },
     ]);
     await expect(replyToComment("o", "r", 1, 123, "msg", "tok", pf)).rejects.toThrow(

@@ -1,16 +1,38 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { hookCheckCommand, evaluatePRState } from "../../src/commands/hook-check.js";
-import { execFileSync } from "node:child_process";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { mockSpawnSync, mockBootstrap, mockGetCurrentBranch, mockFindPRForBranch } = vi.hoisted(
+  () => ({
+    mockSpawnSync: vi.fn(),
+    mockBootstrap: vi.fn(),
+    mockGetCurrentBranch: vi.fn(),
+    mockFindPRForBranch: vi.fn(),
+  }),
+);
 
 vi.mock("node:child_process", () => ({
-  execFileSync: vi.fn(),
+  spawnSync: mockSpawnSync,
 }));
 
+vi.mock("../../src/context.js", () => ({
+  bootstrap: mockBootstrap,
+}));
+
+vi.mock("../../src/github/index.js", () => ({
+  getCurrentBranch: mockGetCurrentBranch,
+  findPRForBranch: mockFindPRForBranch,
+}));
+
+import { hookCheckCommand } from "../../src/commands/hook-check.js";
+
+type StdinChunk = Buffer | string | Uint8Array;
 type StdinAsyncIterator = (typeof process.stdin)[typeof Symbol.asyncIterator];
 
-function mockStdin(data: string) {
+function mockStdin(
+  data: string,
+  chunkFactory: (data: string) => StdinChunk = (value) => Buffer.from(value),
+) {
   vi.spyOn(process.stdin, Symbol.asyncIterator).mockImplementation(async function* stdinMock() {
-    yield Buffer.from(data);
+    yield chunkFactory(data);
   } as unknown as StdinAsyncIterator);
 }
 
@@ -19,11 +41,28 @@ function makeCtx() {
   return { ok, ctx: () => ok.mock.calls[0]?.[0] };
 }
 
-beforeEach(() => {
-  vi.restoreAllMocks();
-});
+function setupStopMocks(branch: string, prNumber: number | null) {
+  mockGetCurrentBranch.mockReturnValue(branch);
+  mockBootstrap.mockResolvedValue({
+    repoInfo: { owner: "roderik", repo: "bellwether" },
+    token: "token",
+    proxyFetch: vi.fn(),
+  });
+  if (prNumber) {
+    mockFindPRForBranch.mockResolvedValue({ number: prNumber });
+  } else {
+    mockFindPRForBranch.mockResolvedValue(null);
+  }
+}
 
 describe("hookCheckCommand", () => {
+  beforeEach(() => {
+    mockSpawnSync.mockReset();
+    mockBootstrap.mockReset();
+    mockGetCurrentBranch.mockReset();
+    mockFindPRForBranch.mockReset();
+  });
+
   it("has description mentioning PostToolUse and Stop hook handler", () => {
     expect(hookCheckCommand.description).toContain("PostToolUse");
     expect(hookCheckCommand.description).toContain("Stop");
@@ -135,10 +174,7 @@ describe("hookCheckCommand", () => {
 
   it("does not match gitpusher (no space — word boundary before push)", async () => {
     mockStdin(
-      JSON.stringify({
-        tool_input: { command: "gitpusher" },
-        hook_event_name: "PostToolUse",
-      }),
+      JSON.stringify({ tool_input: { command: "gitpusher" }, hook_event_name: "PostToolUse" }),
     );
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
@@ -147,202 +183,281 @@ describe("hookCheckCommand", () => {
 
   it("does not match gh pr list (only create/ready)", async () => {
     mockStdin(
-      JSON.stringify({
-        tool_input: { command: "gh pr list" },
-        hook_event_name: "PostToolUse",
-      }),
+      JSON.stringify({ tool_input: { command: "gh pr list" }, hook_event_name: "PostToolUse" }),
     );
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
     expect(ok).toHaveBeenCalledWith({});
   });
-});
 
-describe("Stop hook", () => {
-  it("blocks when PR has failing CI", async () => {
-    vi.mocked(execFileSync).mockReturnValue(
-      JSON.stringify({
-        pr: { state: "open", mergeable: "unstable", ready: false },
-        ci: {
-          sha: "abc",
-          checks: "3 total",
-          "FAIL lint": "Error in src/foo.ts:5",
-          allPassing: false,
-        },
-        reviews: { total: "0 unresolved, 0 unanswered" },
-      }),
-    );
-    mockStdin(JSON.stringify({ hook_event_name: "Stop" }));
+  it("returns empty object for Stop when already continuing from a stop hook", async () => {
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: true }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({});
+    expect(mockSpawnSync).not.toHaveBeenCalled();
+  });
+
+  it("returns empty object for Stop when current branch has no open PR", async () => {
+    setupStopMocks("feature/no-pr", null);
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({});
+    expect(mockSpawnSync).not.toHaveBeenCalled();
+  });
+
+  it("returns empty object for Stop on the main branch", async () => {
+    mockGetCurrentBranch.mockReturnValue("main");
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({});
+    expect(mockBootstrap).not.toHaveBeenCalled();
+  });
+
+  it("blocks Stop when PR detection fails on a non-main branch", async () => {
+    mockGetCurrentBranch.mockReturnValue("feature/error");
+    mockBootstrap.mockRejectedValue(new Error("bad auth"));
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
     expect(ok).toHaveBeenCalledWith({
       decision: "block",
-      reason: expect.stringContaining("failing CI checks"),
+      reason: expect.stringContaining("could not determine"),
+    });
+    expect(mockSpawnSync).not.toHaveBeenCalled();
+  });
+
+  it("returns empty object for Stop when bellwether reports the PR is ready", async () => {
+    setupStopMocks("feature/ready", 42);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({ pr: { state: "open", mergeable: "clean", ready: true } }),
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({});
+    expect(mockSpawnSync).toHaveBeenCalledWith("bellwether", ["check", "42", "--format", "json"], {
+      encoding: "utf-8",
     });
   });
 
-  it("blocks when PR has unresolved reviews", async () => {
-    vi.mocked(execFileSync).mockReturnValue(
-      JSON.stringify({
+  it("accepts string stdin chunks without throwing", async () => {
+    mockStdin(JSON.stringify({ tool_input: { command: "git push" } }), (data) => data);
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      hookSpecificOutput: {
+        hookEventName: "PostToolUse",
+        additionalContext: expect.any(String),
+      },
+    });
+  });
+
+  it("blocks Stop when PR has failing CI", async () => {
+    setupStopMocks("feature/failing-ci", 77);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
+        pr: { state: "open", mergeable: "unstable", ready: false },
+        ci: { sha: "abc", "FAIL lint": "Error in src/foo.ts:5", allPassing: false },
+        reviews: { total: "0 unresolved, 0 unanswered" },
+        cta: { description: "Failed checks detected:" },
+      }),
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("bellwether check --watch"),
+    });
+  });
+
+  it("blocks Stop when PR has unresolved reviews", async () => {
+    setupStopMocks("feature/unresolved", 78);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
         pr: { state: "open", mergeable: "clean", ready: false },
-        ci: { sha: "abc", checks: "3 total", allPassing: true },
-        reviews: { total: "5 unresolved, 3 unanswered", "REVIEW 1 src/foo.ts:10": "Fix this" },
-      }),
-    );
-    mockStdin(JSON.stringify({ hook_event_name: "Stop" }));
-    const { ok } = makeCtx();
-    await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({
-      decision: "block",
-      reason: expect.stringContaining("5 unresolved review comments"),
-    });
-  });
-
-  it("blocks when PR has both failing CI and unresolved reviews", async () => {
-    vi.mocked(execFileSync).mockReturnValue(
-      JSON.stringify({
-        pr: { state: "open", mergeable: "unstable", ready: false },
-        ci: { sha: "abc", "FAIL test": "Error", allPassing: false },
-        reviews: { total: "2 unresolved, 1 unanswered" },
-      }),
-    );
-    mockStdin(JSON.stringify({ hook_event_name: "Stop" }));
-    const { ok } = makeCtx();
-    await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({
-      decision: "block",
-      reason: expect.stringMatching(/failing CI checks.*unresolved review comment/),
-    });
-  });
-
-  it("allows stop when PR is ready", async () => {
-    vi.mocked(execFileSync).mockReturnValue(
-      JSON.stringify({
-        pr: { state: "open", mergeable: "clean", ready: true },
         ci: { sha: "abc", allPassing: true },
-        reviews: { total: "0 unresolved, 0 unanswered" },
+        reviews: { total: "5 unresolved, 3 unanswered", "REVIEW 1 src/foo.ts:10": "Fix this" },
+        cta: { description: "Unresolved review comments:" },
       }),
-    );
-    mockStdin(JSON.stringify({ hook_event_name: "Stop" }));
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("bellwether check --watch"),
+    });
   });
 
-  it("allows stop when PR is closed", async () => {
-    vi.mocked(execFileSync).mockReturnValue(
-      JSON.stringify({
-        pr: { state: "closed", mergeable: "unknown", ready: false },
-      }),
-    );
-    mockStdin(JSON.stringify({ hook_event_name: "Stop" }));
-    const { ok } = makeCtx();
-    await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
-  });
-
-  it("allows stop when PR is merged", async () => {
-    vi.mocked(execFileSync).mockReturnValue(
-      JSON.stringify({
-        pr: { state: "merged", mergeable: "unknown", ready: false },
-      }),
-    );
-    mockStdin(JSON.stringify({ hook_event_name: "Stop" }));
-    const { ok } = makeCtx();
-    await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
-  });
-
-  it("allows stop when only missing review approval (CI green, 0 unresolved)", async () => {
-    vi.mocked(execFileSync).mockReturnValue(
-      JSON.stringify({
+  it("allows Stop when only missing review approval (CI green, 0 unresolved)", async () => {
+    setupStopMocks("feature/needs-approval", 79);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
         pr: { state: "open", mergeable: "blocked", ready: false },
         ci: { sha: "abc", allPassing: true },
         reviews: { total: "0 unresolved, 0 unanswered" },
       }),
-    );
-    mockStdin(JSON.stringify({ hook_event_name: "Stop" }));
-    const { ok } = makeCtx();
-    await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
-  });
-
-  it("allows stop when bellwether check fails (no PR on branch)", async () => {
-    vi.mocked(execFileSync).mockImplementation(() => {
-      throw new Error("No PR found for branch");
+      stderr: "",
     });
-    mockStdin(JSON.stringify({ hook_event_name: "Stop" }));
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
     expect(ok).toHaveBeenCalledWith({});
   });
 
-  it("allows stop when no pr section in output", async () => {
-    vi.mocked(execFileSync).mockReturnValue(JSON.stringify({}));
-    mockStdin(JSON.stringify({ hook_event_name: "Stop" }));
-    const { ok } = makeCtx();
-    await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
-  });
-
-  it("singular review comment in reason for count of 1", async () => {
-    vi.mocked(execFileSync).mockReturnValue(
-      JSON.stringify({
-        pr: { state: "open", mergeable: "clean", ready: false },
-        ci: { sha: "abc", allPassing: true },
-        reviews: { total: "1 unresolved, 1 unanswered", "REVIEW 1 src/foo.ts:10": "Fix" },
+  it("allows Stop when PR is closed", async () => {
+    setupStopMocks("feature/closed", 80);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
+        pr: { state: "closed", mergeable: "unknown", ready: false },
       }),
-    );
-    mockStdin(JSON.stringify({ hook_event_name: "Stop" }));
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({});
+  });
+
+  it("allows Stop when PR is merged", async () => {
+    setupStopMocks("feature/merged", 81);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
+        pr: { state: "merged", mergeable: "unknown", ready: false },
+      }),
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({});
+  });
+
+  it("blocks Stop when bellwether returns no output", async () => {
+    setupStopMocks("feature/no-output", 91);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: "",
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
     expect(ok).toHaveBeenCalledWith({
       decision: "block",
-      reason: expect.stringContaining("1 unresolved review comment."),
+      reason: expect.stringContaining("returned no output"),
     });
-    // Should NOT say "comments" (plural)
-    const reason = (ok.mock.calls[0]![0] as { reason: string }).reason;
-    expect(reason).not.toContain("comments");
   });
-});
 
-describe("evaluatePRState", () => {
-  it("returns null when execFileSync throws", () => {
-    vi.mocked(execFileSync).mockImplementation(() => {
-      throw new Error("not in a git repo");
+  it("blocks Stop when bellwether returns invalid JSON", async () => {
+    setupStopMocks("feature/invalid-json", 92);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: "{not-json",
+      stderr: "",
     });
-    expect(evaluatePRState()).toBeNull();
-  });
-
-  it("returns null for non-JSON output", () => {
-    vi.mocked(execFileSync).mockReturnValue("not json");
-    expect(evaluatePRState()).toBeNull();
-  });
-
-  it("returns block with correct reason for CI failures only", () => {
-    vi.mocked(execFileSync).mockReturnValue(
-      JSON.stringify({
-        pr: { state: "open", ready: false },
-        ci: { "FAIL build": "tsc error" },
-        reviews: { total: "0 unresolved, 0 unanswered" },
-      }),
-    );
-    const result = evaluatePRState();
-    expect(result).toEqual({
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
       decision: "block",
-      reason: expect.stringContaining("failing CI checks"),
+      reason: expect.stringContaining("invalid JSON"),
     });
-    expect(result!.reason).not.toContain("unresolved");
   });
 
-  it("returns null when CI is pending but no failures or reviews", () => {
-    vi.mocked(execFileSync).mockReturnValue(
-      JSON.stringify({
+  it("blocks Stop when bellwether check fails", async () => {
+    setupStopMocks("feature/failing-check", 88);
+    mockSpawnSync.mockReturnValue({
+      status: 1,
+      stdout: "",
+      stderr: "network issue",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("could not verify"),
+    });
+  });
+
+  it("blocks Stop with a fallback status message when bellwether exits non-zero without output", async () => {
+    setupStopMocks("feature/exit-status", 93);
+    mockSpawnSync.mockReturnValue({
+      status: 7,
+      stdout: "",
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("status 7"),
+    });
+  });
+
+  it("blocks Stop with spawnSync error details when bellwether cannot be launched", async () => {
+    setupStopMocks("feature/enoent", 96);
+    mockSpawnSync.mockReturnValue({
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: Object.assign(new Error("spawnSync bellwether ENOENT"), { code: "ENOENT" }),
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("ENOENT"),
+    });
+  });
+
+  it("allows Stop when PR has no actionable work (no CI/reviews in output)", async () => {
+    setupStopMocks("feature/minimal", 94);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
         pr: { state: "open", ready: false },
-        ci: { sha: "abc", in_progress: "build, test" },
-        reviews: { total: "0 unresolved, 0 unanswered" },
+        cta: { description: "" },
       }),
-    );
-    expect(evaluatePRState()).toBeNull();
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({});
+  });
+
+  it("blocks Stop with a dedicated reason when bellwether omits readiness", async () => {
+    setupStopMocks("feature/missing-ready", 95);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
+        pr: { state: "open", mergeable: "clean" },
+      }),
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("could not verify whether it is merge-ready"),
+    });
   });
 });

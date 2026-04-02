@@ -26,6 +26,7 @@ export {
   type ProcessedComment,
   type Reply,
   type FilterOptions,
+  TRACKING_COMMENT_MARKER,
   fetchPRComments,
   processComments,
   filterComments,

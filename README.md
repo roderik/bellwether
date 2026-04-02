@@ -33,13 +33,13 @@ bellwether skills add
 
 ## Hooks
 
-Bellwether can install PostToolUse hooks into Claude Code (`~/.claude/settings.json`) and Codex (`~/.codex/hooks.json`). After a `git push` or `gh pr create/ready`, the hook runs a quick PR status check and reminds the agent to monitor CI.
+Bellwether can install `PostToolUse` and `Stop` hooks into Claude Code (`~/.claude/settings.json`) and Codex (`~/.codex/hooks.json`). After a `git push` or `gh pr create/ready`, the hook reminds the agent to monitor CI. When the agent tries to stop on a branch with an open PR, the stop hook runs `bellwether check` for that PR and continues the turn if the PR is still not merge-ready.
 
 ```bash
 # Install hooks into Claude Code and Codex
 bellwether hooks add
 
-# PostToolUse hook handler (called automatically by Claude Code / Codex)
+# PostToolUse and Stop hook handler (called automatically by Claude Code / Codex)
 bellwether hooks check --format json
 ```
 
@@ -98,12 +98,14 @@ bellwether is built around a watch loop:
 ```
 check --watch
   → pr.ready = true?   → done ✓
+  → pr.state terminal? → done ✓
   → CI failing?        → show filtered error logs → fix → push → repeat
   → Unresolved review? → show comment with context → address → reply → repeat
   → Merge conflict?    → sync branch → push → repeat
+  → Still blocked?     → keep watching until ready/timeout → repeat
 ```
 
-It queries GitHub's Check Runs API directly, filters job logs down to signal (compiler errors, test failures — not noise), and surfaces review threads with file and line context. `--watch` blocks until CI completes — no polling required.
+It queries GitHub's Check Runs API directly, filters job logs down to signal (compiler errors, test failures — not noise), and surfaces review threads with file and line context. `--watch` returns immediately if actionable work already exists; otherwise it establishes a baseline and waits for new actionable work, readiness, terminal PR state, or an inactivity timeout — no manual polling required.
 
 ## Agent usage
 
