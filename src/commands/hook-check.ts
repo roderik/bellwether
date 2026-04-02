@@ -147,14 +147,33 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
     };
   }
 
-  // Allow stopping when the only blocker is missing review approval:
-  // no failing CI checks and no unresolved review comments means nothing actionable.
-  const hasFailingCI = Object.keys(output.ci ?? {}).some((k) => k.startsWith("FAIL "));
-  const totalStr = String(output.reviews?.total ?? "0 unresolved");
-  const unresolvedMatch = totalStr.match(/^(\d+)\s+unresolved/);
-  const unresolvedCount = unresolvedMatch ? Number(unresolvedMatch[1]) : 0;
+  // Block on actionable mergeability states (dirty = conflict, behind = needs sync)
+  const mergeableState = typeof output.pr.mergeable === "string" ? output.pr.mergeable : undefined;
+  if (mergeableState === "dirty" || mergeableState === "behind") {
+    const mergeable = ` (mergeable: ${mergeableState})`;
+    const cta =
+      typeof output.cta?.description === "string" && output.cta.description.trim().length > 0
+        ? ` ${output.cta.description}`
+        : "";
+    return {
+      decision: "block",
+      reason: `${CONTINUE_REASON}${mergeable}${cta}`,
+    };
+  }
 
-  if (!hasFailingCI && unresolvedCount === 0) {
+  // Allow stopping only when we have CI and review data confirming nothing actionable.
+  // Missing sections = unknown state, not "passing".
+  const ciKnown = output.ci !== undefined;
+  const failingCIPrefixes = ["FAIL ", "TIMED_OUT ", "ACTION_REQUIRED "];
+  const hasFailingCI =
+    ciKnown && Object.keys(output.ci!).some((k) => failingCIPrefixes.some((p) => k.startsWith(p)));
+
+  const reviewsKnown = output.reviews?.total !== undefined;
+  const totalStr = reviewsKnown ? String(output.reviews!.total) : undefined;
+  const unresolvedMatch = totalStr?.match(/^(\d+)\s+unresolved/);
+  const unresolvedCount = unresolvedMatch ? Number(unresolvedMatch[1]) : undefined;
+
+  if (ciKnown && !hasFailingCI && unresolvedCount === 0) {
     return {};
   }
 

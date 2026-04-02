@@ -122,8 +122,8 @@ bellwether check --reply "<id>:Already handled — <explanation>" --resolve
 **Rules for thread resolution:**
 - ALWAYS pass `--resolve` on EVERY reply. No exceptions.
 - Fixed code? `--resolve`. Won't fix? `--resolve`. False positive? `--resolve`. Already addressed? `--resolve`.
-- After all replies, verify zero unresolved threads remain by restarting the watch.
-- If threads are still unresolved after replying, reply and resolve them again — do not leave them open.
+- After all replies, restart the watch to verify no actionable threads remain.
+- If threads are still actionable after replying, reply and resolve them again — do not leave them open.
 
 DO NOT restart the watch until ALL replies are posted AND all threads are resolved. After all replies, go to step 1 of the loop.
 
