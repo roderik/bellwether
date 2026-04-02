@@ -465,6 +465,30 @@ describe("hookCheckCommand", () => {
     });
   });
 
+  it("blocks Stop when CI is still pending", async () => {
+    setupStopMocks("feature/pending", 101);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
+        pr: { state: "open", mergeable: "blocked", ready: false },
+        ci: {
+          sha: "abc",
+          checks: "5 total, 3 passing, 0 failing, 2 pending",
+          in_progress: "build, test",
+        },
+        reviews: { total: "0 unresolved, 0 unanswered" },
+      }),
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      decision: "block",
+      reason: expect.stringContaining("bellwether check --watch"),
+    });
+  });
+
   it("blocks Stop when PR is behind base (behind)", async () => {
     setupStopMocks("feature/behind", 98);
     mockSpawnSync.mockReturnValue({

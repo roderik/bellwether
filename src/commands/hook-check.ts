@@ -173,7 +173,12 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
   const unresolvedMatch = totalStr?.match(/^(\d+)\s+unresolved/);
   const unresolvedCount = unresolvedMatch ? Number(unresolvedMatch[1]) : undefined;
 
-  if (ciKnown && !hasFailingCI && unresolvedCount === 0) {
+  const hasPendingCI =
+    ciKnown &&
+    (typeof output.ci!.in_progress === "string" ||
+      /\b[1-9]\d*\s+pending\b/.test(String(output.ci!.checks ?? "")));
+
+  if (ciKnown && !hasFailingCI && !hasPendingCI && unresolvedCount === 0) {
     return {};
   }
 
