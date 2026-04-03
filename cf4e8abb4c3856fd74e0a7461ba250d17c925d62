@@ -1,0 +1,25 @@
+test/github/comments.test.ts
+  92e15bbe6581cfee 886-909
+test/github/repo.test.ts
+  92e15bbe6581cfee 334-352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "cf4e8abb4c3856fd74e0a7461ba250d17c925d62",
+  "prompts": {
+    "92e15bbe6581cfee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56abb1c7-b082-4f7c-a254-879f9c3a7fc8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer",
+      "messages": [],
+      "total_additions": 46,
+      "total_deletions": 0,
+      "accepted_lines": 46,
+      "overriden_lines": 0
+    }
+  }
+}
