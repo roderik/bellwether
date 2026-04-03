@@ -215,13 +215,17 @@ describe("hookCheckCommand", () => {
     expect(mockBootstrap).not.toHaveBeenCalled();
   });
 
-  it("allows Stop when PR detection fails on a non-main branch", async () => {
+  it("advises on Stop when PR detection fails on a non-main branch", async () => {
     mockGetCurrentBranch.mockReturnValue("feature/error");
     mockBootstrap.mockRejectedValue(new Error("bad auth"));
     mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
+    expect(ok).toHaveBeenCalledWith({
+      reason: expect.stringContaining("Could not determine PR status"),
+    });
+    const call = (ok as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.decision).toBeUndefined();
     expect(mockSpawnSync).not.toHaveBeenCalled();
   });
 
@@ -348,7 +352,7 @@ describe("hookCheckCommand", () => {
     expect(ok).toHaveBeenCalledWith({});
   });
 
-  it("allows Stop when bellwether returns no output", async () => {
+  it("advises on Stop when bellwether returns no output", async () => {
     setupStopMocks("feature/no-output", 91);
     mockSpawnSync.mockReturnValue({
       status: 0,
@@ -358,10 +362,12 @@ describe("hookCheckCommand", () => {
     mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
+    expect(ok).toHaveBeenCalledWith({
+      reason: expect.stringContaining("could not be verified"),
+    });
   });
 
-  it("allows Stop when bellwether returns invalid JSON", async () => {
+  it("advises on Stop when bellwether returns invalid JSON", async () => {
     setupStopMocks("feature/invalid-json", 92);
     mockSpawnSync.mockReturnValue({
       status: 0,
@@ -371,10 +377,12 @@ describe("hookCheckCommand", () => {
     mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
+    expect(ok).toHaveBeenCalledWith({
+      reason: expect.stringContaining("could not be verified"),
+    });
   });
 
-  it("allows Stop when bellwether check fails", async () => {
+  it("advises on Stop when bellwether check fails", async () => {
     setupStopMocks("feature/failing-check", 88);
     mockSpawnSync.mockReturnValue({
       status: 1,
@@ -384,10 +392,12 @@ describe("hookCheckCommand", () => {
     mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
+    expect(ok).toHaveBeenCalledWith({
+      reason: expect.stringContaining("could not be verified"),
+    });
   });
 
-  it("allows Stop when bellwether exits non-zero without output", async () => {
+  it("advises on Stop when bellwether exits non-zero without output", async () => {
     setupStopMocks("feature/exit-status", 93);
     mockSpawnSync.mockReturnValue({
       status: 7,
@@ -397,10 +407,12 @@ describe("hookCheckCommand", () => {
     mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
+    expect(ok).toHaveBeenCalledWith({
+      reason: expect.stringContaining("could not be verified"),
+    });
   });
 
-  it("allows Stop when bellwether cannot be launched", async () => {
+  it("advises on Stop when bellwether cannot be launched", async () => {
     setupStopMocks("feature/enoent", 96);
     mockSpawnSync.mockReturnValue({
       status: null,
@@ -411,7 +423,9 @@ describe("hookCheckCommand", () => {
     mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
-    expect(ok).toHaveBeenCalledWith({});
+    expect(ok).toHaveBeenCalledWith({
+      reason: expect.stringContaining("could not be verified"),
+    });
   });
 
   it("advises on Stop when CI/reviews sections are missing (unknown state)", async () => {
@@ -540,7 +554,7 @@ describe("hookCheckCommand", () => {
     expect(call.decision).toBeUndefined();
   });
 
-  it("advises on Stop when bellwether omits readiness", async () => {
+  it("advises on Stop when bellwether omits readiness field", async () => {
     setupStopMocks("feature/missing-ready", 95);
     mockSpawnSync.mockReturnValue({
       status: 0,
@@ -553,7 +567,7 @@ describe("hookCheckCommand", () => {
     const { ok } = makeCtx();
     await hookCheckCommand.run({ ok });
     expect(ok).toHaveBeenCalledWith({
-      reason: expect.stringContaining("not yet merge-ready"),
+      reason: expect.stringContaining("could not be determined"),
     });
     const call = (ok as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(call.decision).toBeUndefined();

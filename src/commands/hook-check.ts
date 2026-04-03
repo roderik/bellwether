@@ -9,6 +9,16 @@ const STOP_EVENT = "Stop";
 const CONTINUE_REASON =
   "Current branch has an open PR that is not merge-ready. Resume the Bellwether loop now: run `bellwether check --watch`, and the moment it returns with a CI failure, review comment, merge conflict, or behind branch, act immediately. If CI fails, reproduce the failing command locally, fix it, rerun that command locally until it passes, then push and restart `bellwether check --watch`. Do not stop while any CI job is still pending or in progress.";
 
+function formatCISummary(checks: unknown): string {
+  if (checks === undefined || checks === null) {
+    return "";
+  }
+  if (typeof checks === "string") {
+    return ` Checks: ${checks}.`;
+  }
+  return ` Checks: ${JSON.stringify(checks)}.`;
+}
+
 interface HookInput {
   hook_event_name?: string;
   last_assistant_message?: string | null;
@@ -107,12 +117,24 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
   }
 
   const { prNumber, error: prResolutionError } = await resolveCurrentBranchPR();
-  if (prResolutionError || !prNumber) {
+  if (prResolutionError) {
+    return {
+      reason: `Could not determine PR status for current branch (${prResolutionError}). Consider running \`bellwether check --watch\` to verify.`,
+    };
+  }
+
+  if (!prNumber) {
     return {};
   }
 
   const { output, error } = runBellwetherCheck(prNumber);
-  if (error || !output?.pr || output.pr.state !== "open" || output.pr.ready === true) {
+  if (error) {
+    return {
+      reason: `PR #${prNumber} status could not be verified (${error}). Consider running \`bellwether check --watch\` to verify.`,
+    };
+  }
+
+  if (!output?.pr || output.pr.state !== "open" || output.pr.ready === true) {
     return {};
   }
 
@@ -134,9 +156,15 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
   }
 
   // Advisory: tell the agent the PR state without blocking
+  if (output.pr.ready === undefined) {
+    return {
+      reason: `PR #${prNumber} merge readiness could not be determined — the CLI output may be from an older version. Consider running \`bellwether check --watch\` to verify.`,
+    };
+  }
+
   const mergeable =
     typeof output.pr.mergeable === "string" ? ` (mergeable: ${output.pr.mergeable})` : "";
-  const ciSummary = output.ci?.checks === undefined ? "" : ` Checks: ${String(output.ci.checks)}.`;
+  const ciSummary = formatCISummary(output.ci?.checks);
   return {
     reason: `PR #${prNumber} is not yet merge-ready${mergeable}.${ciSummary} Consider running \`bellwether check --watch\` when ready to bring it to a mergeable state.`,
   };
