@@ -45,8 +45,7 @@ function setupStopMocks(branch: string, prNumber: number | null) {
   mockGetCurrentBranch.mockReturnValue(branch);
   mockBootstrap.mockResolvedValue({
     repoInfo: { owner: "roderik", repo: "bellwether" },
-    token: "token",
-    proxyFetch: vi.fn(),
+    octokit: {} as never,
   });
   if (prNumber === null) {
     mockFindPRForBranch.mockResolvedValue(null);

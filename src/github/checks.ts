@@ -1,4 +1,4 @@
-import { ghFetch, type ProxyFetch } from "./fetch.js";
+import { type GitHubClient } from "./client.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,19 +91,15 @@ async function fetchJobLog(
   owner: string,
   repo: string,
   jobId: string,
-  token: string,
-  proxyFetch: ProxyFetch,
+  octokit: GitHubClient,
 ): Promise<string> {
   try {
-    const res = await ghFetch(
-      `https://api.github.com/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`,
-      token,
-      proxyFetch,
-    );
-    if (!res.ok) {
-      return `[failed to fetch logs: ${res.status}]`;
-    }
-    return filterLog(await res.text());
+    const { data } = await octokit.request("GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs", {
+      owner,
+      repo,
+      job_id: Number(jobId),
+    });
+    return filterLog(typeof data === "string" ? data : String(data));
   } catch {
     return "[failed to fetch logs]";
   }
@@ -117,35 +113,23 @@ export async function fetchCIStatus(
   owner: string,
   repo: string,
   prNumber: number,
-  token: string,
-  proxyFetch: ProxyFetch,
+  octokit: GitHubClient,
   headSha?: string,
 ): Promise<CIStatus> {
   let sha = headSha;
   if (!sha) {
-    const prResponse = await ghFetch(
-      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
-      token,
-      proxyFetch,
-    );
-    if (!prResponse.ok) {
-      throw new Error(`Failed to fetch PR: ${prResponse.status}`);
-    }
-    const pr = (await prResponse.json()) as { head: { sha: string } };
+    const { data: pr } = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });
     sha = pr.head.sha;
   }
 
   // Fetch check runs for that SHA
-  const checksResponse = await ghFetch(
-    `https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`,
-    token,
-    proxyFetch,
-  );
-  if (!checksResponse.ok) {
-    throw new Error(`Failed to fetch checks: ${checksResponse.status}`);
-  }
-  const checksData = (await checksResponse.json()) as { check_runs: RawCheckRun[] };
-  const rawChecks = checksData.check_runs;
+  const { data: checksData } = await octokit.rest.checks.listForRef({
+    owner,
+    repo,
+    ref: sha,
+    per_page: 100,
+  });
+  const rawChecks = checksData.check_runs as RawCheckRun[];
 
   const isPassing = (c: RawCheckRun) =>
     c.conclusion === "success" || c.conclusion === "skipped" || c.conclusion === "neutral";
@@ -163,7 +147,7 @@ export async function fetchCIStatus(
     failingChecks.map(async (c) => {
       const jobId = parseJobId(c.html_url);
       const log = jobId
-        ? await fetchJobLog(owner, repo, jobId, token, proxyFetch)
+        ? await fetchJobLog(owner, repo, jobId, octokit)
         : "[could not parse job ID from URL]";
       return {
         name: c.name,

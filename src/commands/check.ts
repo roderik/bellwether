@@ -242,8 +242,7 @@ export const checkCommand = {
           ctx.repoInfo.owner,
           ctx.repoInfo.repo,
           prNumber,
-          ctx.token,
-          ctx.proxyFetch,
+          ctx.octokit,
         );
 
         if (mergeState.state !== "open") {
@@ -260,13 +259,7 @@ export const checkCommand = {
         if (mergeState.mergeableState === "behind" && !syncAttempted) {
           syncAttempted = true;
           try {
-            await updatePRBranch(
-              ctx.repoInfo.owner,
-              ctx.repoInfo.repo,
-              prNumber,
-              ctx.token,
-              ctx.proxyFetch,
-            );
+            await updatePRBranch(ctx.repoInfo.owner, ctx.repoInfo.repo, prNumber, ctx.octokit);
           } catch (error) {
             const message =
               error instanceof Error ? error.message : "Failed to sync branch with base";
@@ -441,19 +434,12 @@ export const checkCommand = {
       ctx.repoInfo.owner,
       ctx.repoInfo.repo,
       prNumber,
-      ctx.token,
-      ctx.proxyFetch,
+      ctx.octokit,
     );
     // Branch behind base — sync first; CI/reviews would be stale after sync
     if (mergeState.mergeableState === "behind") {
       try {
-        await updatePRBranch(
-          ctx.repoInfo.owner,
-          ctx.repoInfo.repo,
-          prNumber,
-          ctx.token,
-          ctx.proxyFetch,
-        );
+        await updatePRBranch(ctx.repoInfo.owner, ctx.repoInfo.repo, prNumber, ctx.octokit);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to sync branch with base";
         return c.error({ message });
@@ -462,8 +448,7 @@ export const checkCommand = {
         ctx.repoInfo.owner,
         ctx.repoInfo.repo,
         prNumber,
-        ctx.token,
-        ctx.proxyFetch,
+        ctx.octokit,
       );
       return c.ok(
         {

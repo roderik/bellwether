@@ -1,19 +1,18 @@
 import * as clack from "@clack/prompts";
 import {
   getGitHubToken,
-  getProxyFetch,
   getRepoInfo,
   getCurrentBranch,
   findPRForBranch,
   listOpenPRs,
   type RepoInfo,
-  type ProxyFetch,
+  type GitHubClient,
+  createGitHubClient,
 } from "./github/index.js";
 
 export interface Context {
-  token: string;
   repoInfo: RepoInfo;
-  proxyFetch: ProxyFetch;
+  octokit: GitHubClient;
 }
 
 export async function bootstrap(): Promise<Context> {
@@ -37,14 +36,14 @@ export async function bootstrap(): Promise<Context> {
     );
   }
 
-  return { token, repoInfo, proxyFetch: getProxyFetch() };
+  return { repoInfo, octokit: createGitHubClient(token) };
 }
 
 export async function resolvePR(
   ctx: Context,
   prArg?: number,
 ): Promise<{ prNumber: number; prUrl: string; headSha?: string }> {
-  const { repoInfo, token, proxyFetch } = ctx;
+  const { repoInfo, octokit } = ctx;
 
   if (prArg) {
     return {
@@ -55,13 +54,13 @@ export async function resolvePR(
 
   const branch = getCurrentBranch();
   if (branch && branch !== "main" && branch !== "master") {
-    const pr = await findPRForBranch(repoInfo.owner, repoInfo.repo, branch, token, proxyFetch);
+    const pr = await findPRForBranch(repoInfo.owner, repoInfo.repo, branch, octokit);
     if (pr) {
       return { prNumber: pr.number, prUrl: pr.html_url, headSha: pr.head.sha };
     }
   }
 
-  const prs = await listOpenPRs(repoInfo.owner, repoInfo.repo, token, proxyFetch);
+  const prs = await listOpenPRs(repoInfo.owner, repoInfo.repo, octokit);
   if (prs.length === 0) {
     throw new Error(
       "No open PRs found. Fix: pass a PR number as argument, e.g. `bellwether check 123`.",

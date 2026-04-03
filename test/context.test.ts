@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../src/github/index.js", () => ({
   getGitHubToken: vi.fn(),
-  getProxyFetch: vi.fn(() => vi.fn()),
+  createGitHubClient: vi.fn(() => ({})),
   getRepoInfo: vi.fn(),
   getCurrentBranch: vi.fn(),
   findPRForBranch: vi.fn(),
@@ -45,7 +45,7 @@ describe("bootstrap", () => {
     mockGetToken.mockResolvedValue("tok");
     mockGetRepoInfo.mockReturnValue({ owner: "o", repo: "r" });
     const ctx = await bootstrap();
-    expect(ctx.token).toBe("tok");
+    expect(ctx.octokit).toBeDefined();
     expect(ctx.repoInfo).toEqual({ owner: "o", repo: "r" });
   });
 
@@ -67,9 +67,8 @@ describe("bootstrap", () => {
 
 describe("resolvePR", () => {
   const ctx = {
-    token: "tok",
     repoInfo: { owner: "o", repo: "r" },
-    proxyFetch: vi.fn(),
+    octokit: {} as never,
   };
 
   it("returns directly when prArg provided", async () => {

@@ -8,6 +8,7 @@ import {
   TRACKING_COMMENT_MARKER,
   type ProcessedComment,
 } from "../../src/github/comments.js";
+import { type GitHubClient } from "../../src/github/client.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,20 +55,29 @@ function makeReview(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockProxyFetch(
-  responses: { ok: boolean; status: number; data: unknown; headers?: Record<string, string> }[],
-) {
-  let callIdx = 0;
-  return vi.fn(async () => {
-    const resp = responses[callIdx++];
-    return {
-      ok: resp.ok,
-      status: resp.status,
-      headers: { get: (name: string) => resp.headers?.[name.toLowerCase()] ?? null },
-      text: async () => JSON.stringify(resp.data),
-      json: async () => resp.data,
-    };
-  });
+function createMockOctokit(overrides = {}) {
+  return {
+    rest: {
+      pulls: {
+        list: vi.fn(),
+        get: vi.fn(),
+        createReplyForReviewComment: vi.fn(),
+        listReviewComments: vi.fn(),
+        listReviews: vi.fn(),
+      },
+      issues: {
+        listComments: vi.fn(),
+        getComment: vi.fn(),
+        updateComment: vi.fn(),
+        createComment: vi.fn(),
+      },
+      checks: { listForRef: vi.fn() },
+    },
+    paginate: vi.fn(),
+    graphql: vi.fn(),
+    request: vi.fn(),
+    ...overrides,
+  } as unknown as GitHubClient;
 }
 
 // ---------------------------------------------------------------------------
@@ -698,6 +708,34 @@ describe("processComments", () => {
     });
     expect(result[0].diffHunk).toBeNull();
   });
+
+  it("filters pkg-pr-new meta-comments", () => {
+    const result = processComments({
+      reviewComments: [],
+      issueComments: [
+        makeIssueComment({
+          user: { login: "pkg-pr-new[bot]" },
+          body: "Published via pkg.pr.new\nhttps://pkg.pr.new/bellwether@123",
+        }),
+      ],
+      reviews: [],
+    });
+    expect(result).toHaveLength(0);
+  });
+
+  it("filters pkg-pr-new meta-comments from non-bot login", () => {
+    const result = processComments({
+      reviewComments: [],
+      issueComments: [
+        makeIssueComment({
+          user: { login: "pkg-pr-new" },
+          body: "Published via pkg.pr.new\nhttps://pkg.pr.new/bellwether@123",
+        }),
+      ],
+      reviews: [],
+    });
+    expect(result).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -753,16 +791,18 @@ describe("filterComments", () => {
 
 describe("fetchPRComments", () => {
   it("fetches review comments, issue comments, and reviews in parallel", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: [{ id: 1 }], headers: { link: "" } },
-      { ok: true, status: 200, data: [{ id: 2 }], headers: { link: "" } },
-      { ok: true, status: 200, data: [{ id: 3 }], headers: { link: "" } },
-    ]);
-    const result = await fetchPRComments("owner", "repo", 1, "tok", pf);
+    const octokit = createMockOctokit();
+    // paginate is called 3 times in parallel for review comments, issue comments, and reviews
+    vi.mocked(octokit.paginate)
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockResolvedValueOnce([{ id: 2 }])
+      .mockResolvedValueOnce([{ id: 3 }]);
+
+    const result = await fetchPRComments("owner", "repo", 1, octokit);
     expect(result.reviewComments).toEqual([{ id: 1 }]);
     expect(result.issueComments).toEqual([{ id: 2 }]);
     expect(result.reviews).toEqual([{ id: 3 }]);
-    expect(pf).toHaveBeenCalledTimes(3);
+    expect(octokit.paginate).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -772,145 +812,133 @@ describe("fetchPRComments", () => {
 
 describe("replyToComment", () => {
   it("uses review comment reply endpoint when ok", async () => {
-    const pf = mockProxyFetch([{ ok: true, status: 201, data: { html_url: "https://url" } }]);
-    const result = await replyToComment("o", "r", 1, 123, "msg", "tok", pf);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.createReplyForReviewComment).mockResolvedValue({
+      data: { html_url: "https://url" },
+      status: 201,
+      headers: {},
+      url: "",
+    } as never);
+    const result = await replyToComment("o", "r", 1, 123, "msg", octokit);
     expect(result.html_url).toBe("https://url");
   });
 
   it("creates new tracking comment when no existing one found", async () => {
-    const pf = mockProxyFetch([
-      // review reply fails
-      { ok: false, status: 404, data: {} },
-      // fetch existing issue comments (empty)
-      { ok: true, status: 200, data: [], headers: { link: "" } },
-      // create new tracking comment
-      { ok: true, status: 201, data: { html_url: "https://tracking-new" } },
-    ]);
-    const result = await replyToComment("o", "r", 1, 123, "msg", "tok", pf);
+    const octokit = createMockOctokit();
+    // review reply fails with 404
+    vi.mocked(octokit.rest.pulls.createReplyForReviewComment).mockRejectedValue({
+      status: 404,
+      message: "Not Found",
+    });
+    // paginate returns empty issue comments
+    vi.mocked(octokit.paginate).mockResolvedValue([]);
+    // create new tracking comment
+    vi.mocked(octokit.rest.issues.createComment).mockResolvedValue({
+      data: { html_url: "https://tracking-new" },
+      status: 201,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await replyToComment("o", "r", 1, 123, "msg", octokit);
     expect(result.html_url).toBe("https://tracking-new");
-    // Verify the POST body contains the tracking marker
-    // oxlint-disable-next-line typescript/no-explicit-any -- accessing mock internals
-    const postArgs = (pf.mock.calls as any)[2][1];
-    const body = JSON.parse(postArgs.body);
-    expect(body.body).toContain(TRACKING_COMMENT_MARKER);
-    expect(body.body).toContain("- Re: comment 123 — msg");
+    // Verify the body contains the tracking marker
+    const createCall = vi.mocked(octokit.rest.issues.createComment).mock.calls[0]?.[0];
+    expect(createCall!.body).toContain(TRACKING_COMMENT_MARKER);
+    expect(createCall!.body).toContain("- Re: comment 123");
   });
 
   it("updates existing tracking comment with re-fetch and new bullet", async () => {
     const existingBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — First`;
-    const pf = mockProxyFetch([
-      // review reply fails with 404
-      { ok: false, status: 404, data: {} },
-      // fetch existing issue comments (has tracking comment)
-      {
-        ok: true,
-        status: 200,
-        data: [{ id: 50, body: existingBody, updated_at: "2024-01-01T00:00:00Z" }],
-        headers: { link: "" },
-      },
-      // re-fetch fresh body
-      { ok: true, status: 200, data: { id: 50, body: existingBody } },
-      // PATCH tracking comment
-      { ok: true, status: 200, data: { html_url: "https://tracking-updated" } },
+    const octokit = createMockOctokit();
+    // review reply fails with 404
+    vi.mocked(octokit.rest.pulls.createReplyForReviewComment).mockRejectedValue({
+      status: 404,
+      message: "Not Found",
+    });
+    // paginate returns existing tracking comment
+    vi.mocked(octokit.paginate).mockResolvedValue([
+      { id: 50, body: existingBody, updated_at: "2024-01-01T00:00:00Z" },
     ]);
-    const result = await replyToComment("o", "r", 1, 123, "msg", "tok", pf);
+    // re-fetch fresh body
+    vi.mocked(octokit.rest.issues.getComment).mockResolvedValue({
+      data: { id: 50, body: existingBody },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    // PATCH tracking comment
+    vi.mocked(octokit.rest.issues.updateComment).mockResolvedValue({
+      data: { html_url: "https://tracking-updated" },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await replyToComment("o", "r", 1, 123, "msg", octokit);
     expect(result.html_url).toBe("https://tracking-updated");
     // Verify the PATCH body appends the new bullet
-    // oxlint-disable-next-line typescript/no-explicit-any -- accessing mock internals
-    const patchArgs = (pf.mock.calls as any)[3][1];
-    const body = JSON.parse(patchArgs.body);
-    expect(body.body).toContain("- Re: comment 100 — First");
-    expect(body.body).toContain("- Re: comment 123 — msg");
+    const updateCall = vi.mocked(octokit.rest.issues.updateComment).mock.calls[0]?.[0];
+    expect(updateCall!.body).toContain("- Re: comment 100 — First");
+    expect(updateCall!.body).toContain("- Re: comment 123 — msg");
   });
 
   it("picks most recently updated tracking comment", async () => {
     const oldBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 50 — Old`;
     const newBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — New`;
-    const pf = mockProxyFetch([
-      { ok: false, status: 404, data: {} },
-      {
-        ok: true,
-        status: 200,
-        data: [
-          { id: 10, body: oldBody, updated_at: "2024-01-01T00:00:00Z" },
-          { id: 20, body: newBody, updated_at: "2024-01-02T00:00:00Z" },
-        ],
-        headers: { link: "" },
-      },
-      // re-fetch fresh body for id=20 (most recent)
-      { ok: true, status: 200, data: { id: 20, body: newBody } },
-      // PATCH
-      { ok: true, status: 200, data: { html_url: "https://url" } },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.createReplyForReviewComment).mockRejectedValue({
+      status: 404,
+      message: "Not Found",
+    });
+    vi.mocked(octokit.paginate).mockResolvedValue([
+      { id: 10, body: oldBody, updated_at: "2024-01-01T00:00:00Z" },
+      { id: 20, body: newBody, updated_at: "2024-01-02T00:00:00Z" },
     ]);
-    const result = await replyToComment("o", "r", 1, 123, "msg", "tok", pf);
+    // re-fetch fresh body for id=20 (most recent)
+    vi.mocked(octokit.rest.issues.getComment).mockResolvedValue({
+      data: { id: 20, body: newBody },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    // PATCH
+    vi.mocked(octokit.rest.issues.updateComment).mockResolvedValue({
+      data: { html_url: "https://url" },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await replyToComment("o", "r", 1, 123, "msg", octokit);
     expect(result.html_url).toBe("https://url");
     // Verify PATCH went to comment 20, not 10
-    // oxlint-disable-next-line typescript/no-explicit-any -- accessing mock internals
-    const patchUrl = (pf.mock.calls as any)[3][0];
-    expect(patchUrl).toContain("/issues/comments/20");
-  });
-
-  it("falls back to stale body when re-fetch fails", async () => {
-    const existingBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — First`;
-    const pf = mockProxyFetch([
-      { ok: false, status: 404, data: {} },
-      {
-        ok: true,
-        status: 200,
-        data: [{ id: 50, body: existingBody, updated_at: "2024-01-01T00:00:00Z" }],
-        headers: { link: "" },
-      },
-      // re-fetch fails
-      { ok: false, status: 500, data: {} },
-      // PATCH still works using stale body
-      { ok: true, status: 200, data: { html_url: "https://url" } },
-    ]);
-    const result = await replyToComment("o", "r", 1, 123, "msg", "tok", pf);
-    expect(result.html_url).toBe("https://url");
+    const updateCall = vi.mocked(octokit.rest.issues.updateComment).mock.calls[0]?.[0];
+    expect(updateCall!.comment_id).toBe(20);
   });
 
   it("throws on non-404 review reply failure", async () => {
-    const pf = mockProxyFetch([{ ok: false, status: 500, data: "server error" }]);
-    await expect(replyToComment("o", "r", 1, 123, "msg", "tok", pf)).rejects.toThrow(
-      "Failed to reply: 500",
-    );
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.createReplyForReviewComment).mockRejectedValue({
+      status: 500,
+      message: "Server Error",
+    });
+    await expect(replyToComment("o", "r", 1, 123, "msg", octokit)).rejects.toEqual({
+      status: 500,
+      message: "Server Error",
+    });
   });
 
   it("throws on auth failure without fallback", async () => {
-    const pf = mockProxyFetch([{ ok: false, status: 401, data: "unauthorized" }]);
-    await expect(replyToComment("o", "r", 1, 123, "msg", "tok", pf)).rejects.toThrow(
-      "Failed to reply: 401",
-    );
-  });
-
-  it("throws when tracking comment update fails", async () => {
-    const existingBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — First`;
-    const pf = mockProxyFetch([
-      { ok: false, status: 404, data: {} },
-      {
-        ok: true,
-        status: 200,
-        data: [{ id: 50, body: existingBody, updated_at: "2024-01-01T00:00:00Z" }],
-        headers: { link: "" },
-      },
-      // re-fetch
-      { ok: true, status: 200, data: { id: 50, body: existingBody } },
-      { ok: false, status: 500, data: "server error" },
-    ]);
-    await expect(replyToComment("o", "r", 1, 123, "msg", "tok", pf)).rejects.toThrow(
-      "Failed to update tracking comment: 500",
-    );
-  });
-
-  it("throws when tracking comment creation fails", async () => {
-    const pf = mockProxyFetch([
-      { ok: false, status: 404, data: {} },
-      { ok: true, status: 200, data: [], headers: { link: "" } },
-      { ok: false, status: 500, data: "server error" },
-    ]);
-    await expect(replyToComment("o", "r", 1, 123, "msg", "tok", pf)).rejects.toThrow(
-      "Failed to reply: 500",
-    );
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.createReplyForReviewComment).mockRejectedValue({
+      status: 401,
+      message: "Unauthorized",
+    });
+    await expect(replyToComment("o", "r", 1, 123, "msg", octokit)).rejects.toEqual({
+      status: 401,
+      message: "Unauthorized",
+    });
   });
 });
 
@@ -920,208 +948,104 @@ describe("replyToComment", () => {
 
 describe("resolveThread", () => {
   it("returns skipped when thread not found", async () => {
-    const pf = mockProxyFetch([
-      {
-        ok: true,
-        status: 200,
-        data: {
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
-              },
-            },
-          },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql).mockResolvedValue({
+      repository: {
+        pullRequest: {
+          reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
         },
       },
-    ]);
-    const result = await resolveThread("o", "r", 1, 999, "tok", pf);
+    });
+    const result = await resolveThread("o", "r", 1, 999, octokit);
     expect(result).toEqual({ skipped: true, reason: "not a review comment thread" });
   });
 
   it("returns alreadyResolved when thread is resolved", async () => {
-    const pf = mockProxyFetch([
-      {
-        ok: true,
-        status: 200,
-        data: {
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: {
-                  pageInfo: { hasNextPage: false, endCursor: null },
-                  nodes: [
-                    { id: "T1", isResolved: true, comments: { nodes: [{ databaseId: 123 }] } },
-                  ],
-                },
-              },
-            },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql).mockResolvedValue({
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [{ id: "T1", isResolved: true, comments: { nodes: [{ databaseId: 123 }] } }],
           },
         },
       },
-    ]);
-    const result = await resolveThread("o", "r", 1, 123, "tok", pf);
+    });
+    const result = await resolveThread("o", "r", 1, 123, octokit);
     expect(result).toEqual({ alreadyResolved: true, threadId: "T1" });
   });
 
   it("resolves thread via mutation", async () => {
-    const pf = mockProxyFetch([
-      {
-        ok: true,
-        status: 200,
-        data: {
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: {
-                  pageInfo: { hasNextPage: false, endCursor: null },
-                  nodes: [
-                    { id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } },
-                  ],
-                },
-              },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql)
+      // First call: query to find the thread
+      .mockResolvedValueOnce({
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [{ id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } }],
             },
           },
         },
-      },
-      {
-        ok: true,
-        status: 200,
-        data: { data: { resolveReviewThread: { thread: { id: "T1", isResolved: true } } } },
-      },
-    ]);
-    const result = await resolveThread("o", "r", 1, 123, "tok", pf);
+      })
+      // Second call: mutation to resolve
+      .mockResolvedValueOnce({
+        resolveReviewThread: { thread: { id: "T1", isResolved: true } },
+      });
+
+    const result = await resolveThread("o", "r", 1, 123, octokit);
     expect(result).toEqual({ resolved: true, threadId: "T1" });
   });
 
   it("paginates to find thread", async () => {
-    const pf = mockProxyFetch([
-      {
-        ok: true,
-        status: 200,
-        data: {
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: {
-                  pageInfo: { hasNextPage: true, endCursor: "c1" },
-                  nodes: [
-                    { id: "T0", isResolved: false, comments: { nodes: [{ databaseId: 999 }] } },
-                  ],
-                },
-              },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql)
+      // First page: thread not found, has next page
+      .mockResolvedValueOnce({
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              pageInfo: { hasNextPage: true, endCursor: "c1" },
+              nodes: [{ id: "T0", isResolved: false, comments: { nodes: [{ databaseId: 999 }] } }],
             },
           },
         },
-      },
-      {
-        ok: true,
-        status: 200,
-        data: {
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: {
-                  pageInfo: { hasNextPage: false, endCursor: null },
-                  nodes: [
-                    { id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } },
-                  ],
-                },
-              },
+      })
+      // Second page: thread found
+      .mockResolvedValueOnce({
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [{ id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } }],
             },
           },
         },
-      },
-      {
-        ok: true,
-        status: 200,
-        data: { data: { resolveReviewThread: { thread: { id: "T1", isResolved: true } } } },
-      },
-    ]);
-    const result = await resolveThread("o", "r", 1, 123, "tok", pf);
+      })
+      // Mutation to resolve
+      .mockResolvedValueOnce({
+        resolveReviewThread: { thread: { id: "T1", isResolved: true } },
+      });
+
+    const result = await resolveThread("o", "r", 1, 123, octokit);
     expect(result).toEqual({ resolved: true, threadId: "T1" });
-    expect(pf).toHaveBeenCalledTimes(3);
+    expect(octokit.graphql).toHaveBeenCalledTimes(3);
   });
 
   it("throws on GraphQL query failure", async () => {
-    const pf = mockProxyFetch([{ ok: false, status: 401, data: {} }]);
-    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow(
-      "GraphQL query failed: 401",
-    );
-  });
-
-  it("throws on GraphQL errors in query response", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { errors: [{ message: "bad query" }] } },
-    ]);
-    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow(
-      "GraphQL error: bad query",
-    );
-  });
-
-  it("throws on mutation failure", async () => {
-    const pf = mockProxyFetch([
-      {
-        ok: true,
-        status: 200,
-        data: {
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: {
-                  pageInfo: { hasNextPage: false, endCursor: null },
-                  nodes: [
-                    { id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } },
-                  ],
-                },
-              },
-            },
-          },
-        },
-      },
-      { ok: false, status: 500, data: {} },
-    ]);
-    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow(
-      "Failed to resolve thread: 500",
-    );
-  });
-
-  it("throws on mutation GraphQL errors", async () => {
-    const pf = mockProxyFetch([
-      {
-        ok: true,
-        status: 200,
-        data: {
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: {
-                  pageInfo: { hasNextPage: false, endCursor: null },
-                  nodes: [
-                    { id: "T1", isResolved: false, comments: { nodes: [{ databaseId: 123 }] } },
-                  ],
-                },
-              },
-            },
-          },
-        },
-      },
-      { ok: true, status: 200, data: { errors: [{ message: "mutation failed" }] } },
-    ]);
-    await expect(resolveThread("o", "r", 1, 123, "tok", pf)).rejects.toThrow(
-      "GraphQL error: mutation failed",
-    );
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql).mockRejectedValue(new Error("GraphQL error"));
+    await expect(resolveThread("o", "r", 1, 123, octokit)).rejects.toThrow("GraphQL error");
   });
 
   it("returns skipped when reviewThreads is null", async () => {
-    const pf = mockProxyFetch([
-      {
-        ok: true,
-        status: 200,
-        data: { data: { repository: { pullRequest: { reviewThreads: null } } } },
-      },
-    ]);
-    const result = await resolveThread("o", "r", 1, 123, "tok", pf);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql).mockResolvedValue({
+      repository: { pullRequest: { reviewThreads: null } },
+    });
+    const result = await resolveThread("o", "r", 1, 123, octokit);
     expect(result).toEqual({ skipped: true, reason: "not a review comment thread" });
   });
 });

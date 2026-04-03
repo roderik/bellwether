@@ -1,17 +1,7 @@
 import { z } from "incur";
 import { resolvePR, type Context } from "../context.js";
-import { ghFetch, getRepoRoot } from "../github/index.js";
-import {
-  updatePRBranch,
-  detectLocalConflicts,
-  type FileConflict,
-} from "../github/sync.js";
-
-interface RawPRData {
-  base: { ref: string };
-  head: { sha: string };
-  mergeable_state: string | null;
-}
+import { getRepoRoot } from "../github/index.js";
+import { updatePRBranch, detectLocalConflicts, type FileConflict } from "../github/sync.js";
 
 interface SyncCommandContext {
   var: { ctx: Context };
@@ -42,13 +32,11 @@ export const syncCommand = {
   alias: {
     detectConflicts: "c",
   },
-  usage: [
-    {},
-    { args: { pr: 123 } },
-    { options: { detectConflicts: false } },
-  ],
+  usage: [{}, { args: { pr: 123 } }, { options: { detectConflicts: false } }],
   output: z.object({
-    synced: z.boolean().describe("Whether the branch is up to date with its base after attempting sync"),
+    synced: z
+      .boolean()
+      .describe("Whether the branch is up to date with its base after attempting sync"),
     message: z.string().describe("Status message"),
     mergeableState: z.string().optional().describe("Current PR mergeable state"),
     conflicts: z
@@ -65,17 +53,13 @@ export const syncCommand = {
     const ctx: Context = c.var.ctx;
     const { prNumber } = await resolvePR(ctx, c.args.pr);
 
-    const prResponse = await ghFetch(
-      `https://api.github.com/repos/${ctx.repoInfo.owner}/${ctx.repoInfo.repo}/pulls/${prNumber}`,
-      ctx.token,
-      ctx.proxyFetch,
-    );
-    if (!prResponse.ok) {
-      return c.error({ message: `Failed to fetch PR: ${prResponse.status}` });
-    }
-    const prData = (await prResponse.json()) as RawPRData;
+    const { data: prData } = await ctx.octokit.rest.pulls.get({
+      owner: ctx.repoInfo.owner,
+      repo: ctx.repoInfo.repo,
+      pull_number: prNumber,
+    });
     const baseBranch = prData.base.ref;
-    const mergeableState = prData.mergeable_state ?? "unknown";
+    const mergeableState = prData.mergeable_state;
 
     if (mergeableState === "clean") {
       return c.ok({ synced: true, message: "PR is already up to date", mergeableState });
@@ -116,8 +100,7 @@ export const syncCommand = {
         ctx.repoInfo.repo,
         prNumber,
         expectedHeadSha,
-        ctx.token,
-        ctx.proxyFetch,
+        ctx.octokit,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to update PR branch";
@@ -128,15 +111,12 @@ export const syncCommand = {
       // Re-fetch PR so mergeableState reflects the post-sync state
       let postSyncMergeableState = mergeableState;
       try {
-        const postSyncResponse = await ghFetch(
-          `https://api.github.com/repos/${ctx.repoInfo.owner}/${ctx.repoInfo.repo}/pulls/${prNumber}`,
-          ctx.token,
-          ctx.proxyFetch,
-        );
-        if (postSyncResponse.ok) {
-          const postSyncData = (await postSyncResponse.json()) as RawPRData;
-          postSyncMergeableState = postSyncData.mergeable_state ?? mergeableState;
-        }
+        const { data: postSyncData } = await ctx.octokit.rest.pulls.get({
+          owner: ctx.repoInfo.owner,
+          repo: ctx.repoInfo.repo,
+          pull_number: prNumber,
+        });
+        postSyncMergeableState = postSyncData.mergeable_state;
       } catch {
         // Ignore re-fetch errors; fall back to pre-sync mergeableState
       }

@@ -1,27 +1,30 @@
 import { describe, it, expect, vi } from "vitest";
 import { fetchCIStatus } from "../../src/github/checks.js";
+import { type GitHubClient } from "../../src/github/client.js";
 
-function mockProxyFetch(
-  responses: {
-    ok: boolean;
-    status: number;
-    data?: unknown;
-    text?: string;
-    headers?: Record<string, string>;
-  }[],
-) {
-  let callIdx = 0;
-  return vi.fn(async () => {
-    const resp = responses[callIdx++];
-    const body = resp.text ?? JSON.stringify(resp.data);
-    return {
-      ok: resp.ok,
-      status: resp.status,
-      headers: { get: (name: string) => resp.headers?.[name.toLowerCase()] ?? null },
-      text: async () => body,
-      json: async () => resp.data,
-    };
-  });
+function createMockOctokit(overrides = {}) {
+  return {
+    rest: {
+      pulls: {
+        list: vi.fn(),
+        get: vi.fn(),
+        createReplyForReviewComment: vi.fn(),
+        listReviewComments: vi.fn(),
+        listReviews: vi.fn(),
+      },
+      issues: {
+        listComments: vi.fn(),
+        getComment: vi.fn(),
+        updateComment: vi.fn(),
+        createComment: vi.fn(),
+      },
+      checks: { listForRef: vi.fn() },
+    },
+    paginate: vi.fn(),
+    graphql: vi.fn(),
+    request: vi.fn(),
+    ...overrides,
+  } as unknown as GitHubClient;
 }
 
 const fakeLog = [
@@ -35,56 +38,66 @@ const fakeLog = [
 
 describe("fetchCIStatus", () => {
   it("returns status with passing, failing, pending checks and logs", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { head: { sha: "abc123" } } },
-      {
-        ok: true,
-        status: 200,
-        data: {
-          check_runs: [
-            {
-              id: 1,
-              name: "build",
-              status: "completed",
-              conclusion: "success",
-              html_url: "https://github.com/o/r/actions/runs/1/job/1",
-            },
-            {
-              id: 2,
-              name: "test",
-              status: "completed",
-              conclusion: "failure",
-              html_url: "https://github.com/o/r/actions/runs/1/job/2",
-            },
-            {
-              id: 3,
-              name: "lint",
-              status: "in_progress",
-              conclusion: null,
-              html_url: "https://github.com/o/r/actions/runs/1/job/3",
-            },
-            {
-              id: 4,
-              name: "deploy",
-              status: "completed",
-              conclusion: "skipped",
-              html_url: "https://github.com/o/r/actions/runs/1/job/4",
-            },
-            {
-              id: 5,
-              name: "audit",
-              status: "completed",
-              conclusion: "neutral",
-              html_url: "https://github.com/o/r/actions/runs/1/job/5",
-            },
-          ],
-        },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc123" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "build",
+            status: "completed",
+            conclusion: "success",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+          {
+            id: 2,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/2",
+          },
+          {
+            id: 3,
+            name: "lint",
+            status: "in_progress",
+            conclusion: null,
+            html_url: "https://github.com/o/r/actions/runs/1/job/3",
+          },
+          {
+            id: 4,
+            name: "deploy",
+            status: "completed",
+            conclusion: "skipped",
+            html_url: "https://github.com/o/r/actions/runs/1/job/4",
+          },
+          {
+            id: 5,
+            name: "audit",
+            status: "completed",
+            conclusion: "neutral",
+            html_url: "https://github.com/o/r/actions/runs/1/job/5",
+          },
+        ],
       },
-      // Log for failing check (id: 2)
-      { ok: true, status: 200, text: fakeLog },
-    ]);
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    // Log for failing check (job 2)
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: fakeLog,
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
 
-    const result = await fetchCIStatus("owner", "repo", 1, "tok", pf);
+    const result = await fetchCIStatus("owner", "repo", 1, octokit);
 
     expect(result.sha).toBe("abc123");
     expect(result.total).toBe(5);
@@ -101,182 +114,216 @@ describe("fetchCIStatus", () => {
   });
 
   it("handles timed_out and action_required as failing", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { head: { sha: "abc" } } },
-      {
-        ok: true,
-        status: 200,
-        data: {
-          check_runs: [
-            {
-              id: 1,
-              name: "slow",
-              status: "completed",
-              conclusion: "timed_out",
-              html_url: "https://github.com/o/r/actions/runs/1/job/1",
-            },
-            {
-              id: 2,
-              name: "needs-action",
-              status: "completed",
-              conclusion: "action_required",
-              html_url: "https://github.com/o/r/actions/runs/1/job/2",
-            },
-          ],
-        },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "slow",
+            status: "completed",
+            conclusion: "timed_out",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+          {
+            id: 2,
+            name: "needs-action",
+            status: "completed",
+            conclusion: "action_required",
+            html_url: "https://github.com/o/r/actions/runs/1/job/2",
+          },
+        ],
       },
-      { ok: true, status: 200, text: fakeLog },
-      { ok: true, status: 200, text: fakeLog },
-    ]);
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: fakeLog,
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
 
-    const result = await fetchCIStatus("owner", "repo", 1, "tok", pf);
+    const result = await fetchCIStatus("owner", "repo", 1, octokit);
     expect(result.failing).toBe(2);
     expect(result.failures.map((f) => f.name)).toEqual(["slow", "needs-action"]);
   });
 
   it("handles cancelled checks (not passing, not failing)", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { head: { sha: "abc" } } },
-      {
-        ok: true,
-        status: 200,
-        data: {
-          check_runs: [
-            {
-              id: 1,
-              name: "cancelled",
-              status: "completed",
-              conclusion: "cancelled",
-              html_url: "u",
-            },
-          ],
-        },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "cancelled",
+            status: "completed",
+            conclusion: "cancelled",
+            html_url: "u",
+          },
+        ],
       },
-    ]);
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
 
-    const result = await fetchCIStatus("owner", "repo", 1, "tok", pf);
+    const result = await fetchCIStatus("owner", "repo", 1, octokit);
     expect(result.passing).toBe(0);
     expect(result.failing).toBe(0);
     expect(result.pending).toBe(0);
   });
 
   it("queued checks count as pending", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { head: { sha: "abc" } } },
-      {
-        ok: true,
-        status: 200,
-        data: {
-          check_runs: [
-            { id: 1, name: "queued-job", status: "queued", conclusion: null, html_url: "u" },
-          ],
-        },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          { id: 1, name: "queued-job", status: "queued", conclusion: null, html_url: "u" },
+        ],
       },
-    ]);
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
 
-    const result = await fetchCIStatus("owner", "repo", 1, "tok", pf);
+    const result = await fetchCIStatus("owner", "repo", 1, octokit);
     expect(result.pending).toBe(1);
     expect(result.in_progress).toEqual(["queued-job"]);
   });
 
   it("throws on PR fetch failure", async () => {
-    const pf = mockProxyFetch([{ ok: false, status: 404, data: {} }]);
-    await expect(fetchCIStatus("o", "r", 1, "tok", pf)).rejects.toThrow("Failed to fetch PR: 404");
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockRejectedValue({ status: 404, message: "Not Found" });
+    await expect(fetchCIStatus("o", "r", 1, octokit)).rejects.toEqual({
+      status: 404,
+      message: "Not Found",
+    });
   });
 
   it("throws on checks fetch failure", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { head: { sha: "abc" } } },
-      { ok: false, status: 500, data: {} },
-    ]);
-    await expect(fetchCIStatus("o", "r", 1, "tok", pf)).rejects.toThrow(
-      "Failed to fetch checks: 500",
-    );
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockRejectedValue({
+      status: 500,
+      message: "Server Error",
+    });
+    await expect(fetchCIStatus("o", "r", 1, octokit)).rejects.toEqual({
+      status: 500,
+      message: "Server Error",
+    });
   });
 
   it("handles log fetch failure gracefully", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { head: { sha: "abc" } } },
-      {
-        ok: true,
-        status: 200,
-        data: {
-          check_runs: [
-            {
-              id: 1,
-              name: "test",
-              status: "completed",
-              conclusion: "failure",
-              html_url: "https://github.com/o/r/actions/runs/1/job/1",
-            },
-          ],
-        },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+        ],
       },
-      { ok: false, status: 500, text: "" },
-    ]);
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockRejectedValue({ status: 500, message: "Server Error" });
 
-    const result = await fetchCIStatus("o", "r", 1, "tok", pf);
+    const result = await fetchCIStatus("o", "r", 1, octokit);
     expect(result.failures[0].log).toContain("failed to fetch logs");
   });
 
   it("handles log fetch exception gracefully", async () => {
-    let callIdx = 0;
-    const pf = vi.fn(async () => {
-      callIdx++;
-      if (callIdx === 1) {
-        return {
-          ok: true,
-          status: 200,
-          headers: { get: () => null },
-          text: async () => "",
-          json: async () => ({ head: { sha: "abc" } }),
-        };
-      }
-      if (callIdx === 2) {
-        return {
-          ok: true,
-          status: 200,
-          headers: { get: () => null },
-          text: async () => "",
-          json: async () => ({
-            check_runs: [
-              {
-                id: 1,
-                name: "test",
-                status: "completed",
-                conclusion: "failure",
-                html_url: "https://github.com/o/r/actions/runs/1/job/1",
-              },
-            ],
-          }),
-        };
-      }
-      throw new Error("network error");
-    });
-    const result = await fetchCIStatus("o", "r", 1, "tok", pf);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+        ],
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockRejectedValue(new Error("network error"));
+
+    const result = await fetchCIStatus("o", "r", 1, octokit);
     expect(result.failures[0].log).toBe("[failed to fetch logs]");
   });
 
   it("handles unparseable job URL", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { head: { sha: "abc" } } },
-      {
-        ok: true,
-        status: 200,
-        data: {
-          check_runs: [
-            {
-              id: 1,
-              name: "test",
-              status: "completed",
-              conclusion: "failure",
-              html_url: "https://github.com/o/r/actions/runs/1",
-            },
-          ],
-        },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1",
+          },
+        ],
       },
-    ]);
-    const result = await fetchCIStatus("o", "r", 1, "tok", pf);
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await fetchCIStatus("o", "r", 1, octokit);
     expect(result.failures[0].log).toContain("could not parse job ID");
   });
 
@@ -292,27 +339,37 @@ describe("fetchCIStatus", () => {
       "2024-01-01T00:00:00.0000000Z ##[error]Process completed with exit code 1.",
     ].join("\n");
 
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { head: { sha: "abc" } } },
-      {
-        ok: true,
-        status: 200,
-        data: {
-          check_runs: [
-            {
-              id: 1,
-              name: "test",
-              status: "completed",
-              conclusion: "failure",
-              html_url: "https://github.com/o/r/actions/runs/1/job/1",
-            },
-          ],
-        },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+        ],
       },
-      { ok: true, status: 200, text: log },
-    ]);
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: log,
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
 
-    const result = await fetchCIStatus("o", "r", 1, "tok", pf);
+    const result = await fetchCIStatus("o", "r", 1, octokit);
     expect(result.failures[0].log).toContain("Expected 1 to be 2");
     expect(result.failures[0].log).not.toContain("##[group]");
     expect(result.failures[0].log).not.toContain("installing deps");
@@ -327,41 +384,74 @@ describe("fetchCIStatus", () => {
       "2024-01-01T00:00:00.0000000Z ",
     ].join("\n");
 
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { head: { sha: "abc" } } },
-      {
-        ok: true,
-        status: 200,
-        data: {
-          check_runs: [
-            {
-              id: 1,
-              name: "test",
-              status: "completed",
-              conclusion: "failure",
-              html_url: "https://github.com/o/r/actions/runs/1/job/1",
-            },
-          ],
-        },
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+        ],
       },
-      { ok: true, status: 200, text: log },
-    ]);
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: log,
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
 
-    const result = await fetchCIStatus("o", "r", 1, "tok", pf);
+    const result = await fetchCIStatus("o", "r", 1, octokit);
     expect(result.failures[0].log).toContain("actual error here");
     expect(result.failures[0].log).not.toContain("debug line");
   });
 
   it("handles empty check runs", async () => {
-    const pf = mockProxyFetch([
-      { ok: true, status: 200, data: { head: { sha: "abc" } } },
-      { ok: true, status: 200, data: { check_runs: [] } },
-    ]);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: { check_runs: [] },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
 
-    const result = await fetchCIStatus("o", "r", 1, "tok", pf);
+    const result = await fetchCIStatus("o", "r", 1, octokit);
     expect(result.total).toBe(0);
     expect(result.passing).toBe(0);
     expect(result.failing).toBe(0);
     expect(result.pending).toBe(0);
+  });
+
+  it("uses provided headSha and skips PR fetch", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: { check_runs: [] },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await fetchCIStatus("o", "r", 1, octokit, "provided-sha");
+    expect(result.sha).toBe("provided-sha");
+    expect(octokit.rest.pulls.get).not.toHaveBeenCalled();
   });
 });

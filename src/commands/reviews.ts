@@ -7,7 +7,7 @@ import {
   replyToComment,
   resolveThread,
   type ProcessedComment,
-  type ProxyFetch,
+  type GitHubClient,
 } from "../github/index.js";
 
 export const replySchema = z.object({
@@ -52,9 +52,9 @@ export async function getReviewsList(
     humansOnly: boolean;
   },
 ): Promise<{ comments: ProcessedComment[]; total: number }> {
-  const { token, repoInfo, proxyFetch } = ctx;
+  const { repoInfo, octokit } = ctx;
 
-  const rawData = await fetchPRComments(repoInfo.owner, repoInfo.repo, prNumber, token, proxyFetch);
+  const rawData = await fetchPRComments(repoInfo.owner, repoInfo.repo, prNumber, octokit);
   const processed = processComments(rawData);
   const filtered = filterComments(processed, {
     botsOnly: filterOpts.botsOnly,
@@ -70,9 +70,9 @@ export async function getReviewDetail(
   prNumber: number,
   commentId: number,
 ): Promise<ProcessedComment | undefined> {
-  const { token, repoInfo, proxyFetch } = ctx;
+  const { repoInfo, octokit } = ctx;
 
-  const rawData = await fetchPRComments(repoInfo.owner, repoInfo.repo, prNumber, token, proxyFetch);
+  const rawData = await fetchPRComments(repoInfo.owner, repoInfo.repo, prNumber, octokit);
   const processed = processComments(rawData);
   return processed.find((cm) => cm.id === commentId);
 }
@@ -90,7 +90,7 @@ export async function postReply(
   resolved?: boolean;
   resolveError?: string;
 }> {
-  const { token, repoInfo, proxyFetch } = ctx;
+  const { repoInfo, octokit } = ctx;
 
   const colonIdx = replyStr.indexOf(":");
   if (colonIdx === -1) {
@@ -105,22 +105,14 @@ export async function postReply(
     prNumber,
     commentId,
     message,
-    token,
-    proxyFetch,
+    octokit,
   );
 
   let resolved: boolean | undefined;
   let resolveError: string | undefined;
   if (shouldResolve) {
     try {
-      const res = await resolveThread(
-        repoInfo.owner,
-        repoInfo.repo,
-        prNumber,
-        commentId,
-        token,
-        proxyFetch,
-      );
+      const res = await resolveThread(repoInfo.owner, repoInfo.repo, prNumber, commentId, octokit);
       resolved = "resolved" in res && res.resolved;
     } catch (error: unknown) {
       resolved = false;
@@ -168,8 +160,7 @@ export async function watchForComments(
     owner: string;
     repo: string;
     prNumber: number;
-    token: string;
-    proxyFetch: ProxyFetch;
+    octokit: GitHubClient;
   },
   options: {
     botsOnly?: boolean;
@@ -179,11 +170,11 @@ export async function watchForComments(
     watchTimeout: number;
   },
 ) {
-  const { owner, repo, prNumber, token, proxyFetch } = context;
+  const { owner, repo, prNumber, octokit } = context;
   const seenIds = new Set<number>();
   const startTime = Date.now();
 
-  const initialData = await fetchPRComments(owner, repo, prNumber, token, proxyFetch);
+  const initialData = await fetchPRComments(owner, repo, prNumber, octokit);
   const initialProcessed = processComments(initialData);
   const initialFiltered = filterComments(initialProcessed, options);
   for (const comment of initialFiltered) {
@@ -193,7 +184,7 @@ export async function watchForComments(
   while (true) {
     await new Promise<void>((r) => setTimeout(r, options.watchInterval * 1000));
 
-    const rawData = await fetchPRComments(owner, repo, prNumber, token, proxyFetch);
+    const rawData = await fetchPRComments(owner, repo, prNumber, octokit);
     const processed = processComments(rawData);
     const filtered = filterComments(processed, options);
     const newComments = filtered.filter((cm) => !seenIds.has(cm.id));
@@ -205,7 +196,7 @@ export async function watchForComments(
 
       // Grace period for bot batches
       await new Promise<void>((r) => setTimeout(r, 5_000));
-      const graceData = await fetchPRComments(owner, repo, prNumber, token, proxyFetch);
+      const graceData = await fetchPRComments(owner, repo, prNumber, octokit);
       const graceProcessed = processComments(graceData);
       const graceFiltered = filterComments(graceProcessed, options);
       for (const cm of graceFiltered) {

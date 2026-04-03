@@ -90,13 +90,7 @@ async function resolveCurrentBranchPR(): Promise<CurrentBranchPR> {
 
   try {
     const ctx = await bootstrap();
-    const pr = await findPRForBranch(
-      ctx.repoInfo.owner,
-      ctx.repoInfo.repo,
-      branch,
-      ctx.token,
-      ctx.proxyFetch,
-    );
+    const pr = await findPRForBranch(ctx.repoInfo.owner, ctx.repoInfo.repo, branch, ctx.octokit);
     return { branch, prNumber: pr?.number ?? null };
   } catch (error) {
     return {

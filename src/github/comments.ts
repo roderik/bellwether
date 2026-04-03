@@ -1,4 +1,4 @@
-import { fetchAllPages, ghFetch, type ProxyFetch } from "./fetch.js";
+import { type GitHubClient } from "./client.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,8 +78,7 @@ const DEFAULT_META_FILTERS: MetaFilter[] = [
       user === "sonarqube-cloud-us") &&
     body.includes("Quality Gate"),
   (user, body) =>
-    (user === "pkg-pr-new[bot]" || user === "pkg-pr-new") &&
-    body.includes("pkg.pr.new"),
+    (user === "pkg-pr-new[bot]" || user === "pkg-pr-new") && body.includes("pkg.pr.new"),
 ];
 
 function isMetaComment(user: string, body: string): boolean {
@@ -144,13 +143,9 @@ function cleanBody(body: string | null | undefined): string {
 // Fetch & process
 // ---------------------------------------------------------------------------
 
-interface RawGitHubUser {
-  login: string;
-}
-
 interface RawReviewComment {
   id: number;
-  user?: RawGitHubUser;
+  user?: { login: string };
   body: string;
   path: string;
   line: number | null;
@@ -164,7 +159,7 @@ interface RawReviewComment {
 
 interface RawIssueComment {
   id: number;
-  user?: RawGitHubUser;
+  user?: { login: string };
   body: string;
   created_at: string;
   updated_at: string;
@@ -173,7 +168,7 @@ interface RawIssueComment {
 
 interface RawReview {
   id: number;
-  user?: RawGitHubUser;
+  user?: { login: string };
   body: string | null;
   state: string;
   submitted_at: string;
@@ -190,27 +185,27 @@ export async function fetchPRComments(
   owner: string,
   repo: string,
   prNumber: number,
-  token: string,
-  proxyFetch: ProxyFetch,
+  octokit: GitHubClient,
 ): Promise<RawCommentData> {
-  const baseUrl = `https://api.github.com/repos/${owner}/${repo}`;
-
   const [reviewComments, issueComments, reviews] = await Promise.all([
-    fetchAllPages<RawReviewComment>(
-      `${baseUrl}/pulls/${prNumber}/comments?per_page=100`,
-      token,
-      proxyFetch,
-    ),
-    fetchAllPages<RawIssueComment>(
-      `${baseUrl}/issues/${prNumber}/comments?per_page=100`,
-      token,
-      proxyFetch,
-    ),
-    fetchAllPages<RawReview>(
-      `${baseUrl}/pulls/${prNumber}/reviews?per_page=100`,
-      token,
-      proxyFetch,
-    ),
+    octokit.paginate(octokit.rest.pulls.listReviewComments, {
+      owner,
+      repo,
+      pull_number: prNumber,
+      per_page: 100,
+    }) as Promise<RawReviewComment[]>,
+    octokit.paginate(octokit.rest.issues.listComments, {
+      owner,
+      repo,
+      issue_number: prNumber,
+      per_page: 100,
+    }) as Promise<RawIssueComment[]>,
+    octokit.paginate(octokit.rest.pulls.listReviews, {
+      owner,
+      repo,
+      pull_number: prNumber,
+      per_page: 100,
+    }) as Promise<RawReview[]>,
   ]);
 
   return { reviewComments, issueComments, reviews };
@@ -379,97 +374,67 @@ export async function replyToComment(
   prNumber: number,
   commentId: number,
   message: string,
-  token: string,
-  proxyFetch: ProxyFetch,
+  octokit: GitHubClient,
 ): Promise<{ html_url: string }> {
   // Try review comment reply endpoint first
-  const response = await ghFetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/comments/${commentId}/replies`,
-    token,
-    proxyFetch,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: message }),
-    },
-  );
-
-  if (!response.ok && response.status !== 404) {
-    const error = await response.text();
-    throw new Error(`Failed to reply: ${response.status} - ${error}`);
+  try {
+    const { data } = await octokit.rest.pulls.createReplyForReviewComment({
+      owner,
+      repo,
+      pull_number: prNumber,
+      comment_id: commentId,
+      body: message,
+    });
+    return { html_url: data.html_url };
+  } catch (error: unknown) {
+    if ((error as { status?: number }).status !== 404) {
+      throw error;
+    }
   }
 
-  if (!response.ok) {
-    // 404 means this is an issue comment, not a review comment.
-    // Consolidate into a single tracking comment with bullet list.
-    const existingComments = await fetchAllPages<RawIssueComment>(
-      `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments?per_page=100`,
-      token,
-      proxyFetch,
-    );
+  // 404 means this is an issue comment, not a review comment.
+  // Consolidate into a single tracking comment with bullet list.
+  const existingComments = await octokit.paginate(octokit.rest.issues.listComments, {
+    owner,
+    repo,
+    issue_number: prNumber,
+    per_page: 100,
+  });
 
-    // Pick the most recently updated tracking comment if multiple exist
-    const trackingComment = existingComments
-      .filter((c) => c.body.startsWith(TRACKING_COMMENT_MARKER))
-      .toSorted((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
-    const newBullet = `- Re: comment ${commentId} — ${message}`;
+  // Pick the most recently updated tracking comment if multiple exist
+  const trackingComment = (existingComments as RawIssueComment[])
+    .filter((c) => c.body.startsWith(TRACKING_COMMENT_MARKER))
+    .toSorted((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
+  const newBullet = `- Re: comment ${commentId} — ${message}`;
 
-    if (trackingComment) {
-      // Re-fetch the latest body to avoid stale read-modify-write
-      const freshResponse = await ghFetch(
-        `https://api.github.com/repos/${owner}/${repo}/issues/comments/${trackingComment.id}`,
-        token,
-        proxyFetch,
-      );
-      const freshBody = freshResponse.ok
-        ? ((await freshResponse.json()) as RawIssueComment).body
-        : trackingComment.body;
+  if (trackingComment) {
+    // Re-fetch the latest body to avoid stale read-modify-write
+    const { data: fresh } = await octokit.rest.issues.getComment({
+      owner,
+      repo,
+      comment_id: trackingComment.id,
+    });
 
-      const updatedBody = `${freshBody}\n${newBullet}`;
-      const updateResponse = await ghFetch(
-        `https://api.github.com/repos/${owner}/${repo}/issues/comments/${trackingComment.id}`,
-        token,
-        proxyFetch,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body: updatedBody }),
-        },
-      );
+    const updatedBody = `${fresh.body}\n${newBullet}`;
+    const { data: updated } = await octokit.rest.issues.updateComment({
+      owner,
+      repo,
+      comment_id: trackingComment.id,
+      body: updatedBody,
+    });
 
-      if (!updateResponse.ok) {
-        const error = await updateResponse.text();
-        throw new Error(
-          `Failed to update tracking comment: ${updateResponse.status} - ${error}`,
-        );
-      }
-
-      return updateResponse.json() as Promise<{ html_url: string }>;
-    }
-
-    // Create new tracking comment
-    const issueResponse = await ghFetch(
-      `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments`,
-      token,
-      proxyFetch,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          body: `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n${newBullet}`,
-        }),
-      },
-    );
-
-    if (!issueResponse.ok) {
-      const error = await issueResponse.text();
-      throw new Error(`Failed to reply: ${issueResponse.status} - ${error}`);
-    }
-
-    return issueResponse.json() as Promise<{ html_url: string }>;
+    return { html_url: updated.html_url };
   }
 
-  return response.json() as Promise<{ html_url: string }>;
+  // Create new tracking comment
+  const { data: created } = await octokit.rest.issues.createComment({
+    owner,
+    repo,
+    issue_number: prNumber,
+    body: `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n${newBullet}`,
+  });
+
+  return { html_url: created.html_url };
 }
 
 export async function resolveThread(
@@ -477,8 +442,7 @@ export async function resolveThread(
   repo: string,
   prNumber: number,
   commentId: number,
-  token: string,
-  proxyFetch: ProxyFetch,
+  octokit: GitHubClient,
 ): Promise<
   | { resolved: true; threadId: string }
   | { alreadyResolved: true; threadId: string }
@@ -509,41 +473,29 @@ export async function resolveThread(
     comments: { nodes: { databaseId: number }[] };
   }
 
+  interface GraphQLResponse {
+    repository?: {
+      pullRequest?: {
+        reviewThreads?: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: ReviewThreadNode[];
+        };
+      };
+    };
+  }
+
   let cursor: string | null = null;
   let thread: ReviewThreadNode | null = null;
 
   while (!thread) {
-    const response = await ghFetch("https://api.github.com/graphql", token, proxyFetch, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query,
-        variables: { owner, repo, pr: prNumber, cursor },
-      }),
+    const data: GraphQLResponse = await octokit.graphql<GraphQLResponse>(query, {
+      owner,
+      repo,
+      pr: prNumber,
+      cursor,
     });
 
-    if (!response.ok) {
-      throw new Error(`GraphQL query failed: ${response.status}`);
-    }
-
-    const data = (await response.json()) as {
-      errors?: { message: string }[];
-      data?: {
-        repository?: {
-          pullRequest?: {
-            reviewThreads?: {
-              pageInfo: { hasNextPage: boolean; endCursor: string | null };
-              nodes: ReviewThreadNode[];
-            };
-          };
-        };
-      };
-    };
-    if (data.errors?.[0]) {
-      throw new Error(`GraphQL error: ${data.errors[0].message}`);
-    }
-
-    const reviewThreads = data.data?.repository?.pullRequest?.reviewThreads;
+    const reviewThreads = data.repository?.pullRequest?.reviewThreads;
     if (!reviewThreads) {
       break;
     }
@@ -576,25 +528,7 @@ export async function resolveThread(
     }
   `;
 
-  const resolveResponse = await ghFetch("https://api.github.com/graphql", token, proxyFetch, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      query: mutation,
-      variables: { threadId: thread.id },
-    }),
-  });
-
-  if (!resolveResponse.ok) {
-    throw new Error(`Failed to resolve thread: ${resolveResponse.status}`);
-  }
-
-  const resolveData = (await resolveResponse.json()) as {
-    errors?: { message: string }[];
-  };
-  if (resolveData.errors?.[0]) {
-    throw new Error(`GraphQL error: ${resolveData.errors[0].message}`);
-  }
+  await octokit.graphql(mutation, { threadId: thread.id });
 
   return { resolved: true, threadId: thread.id };
 }

@@ -31,14 +31,7 @@ export async function getCISection(
   prNumber: number,
   headSha?: string,
 ): Promise<{ status: CIStatus; flat: Record<string, string | number | boolean> }> {
-  const { token, repoInfo, proxyFetch } = ctx;
-  const status = await fetchCIStatus(
-    repoInfo.owner,
-    repoInfo.repo,
-    prNumber,
-    token,
-    proxyFetch,
-    headSha,
-  );
+  const { repoInfo, octokit } = ctx;
+  const status = await fetchCIStatus(repoInfo.owner, repoInfo.repo, prNumber, octokit, headSha);
   return { status, flat: flatten(status) };
 }

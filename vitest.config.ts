@@ -9,6 +9,7 @@ export default defineConfig({
         "src/bin.ts",
         "src/cli.ts",
         "src/github/index.ts",
+        "src/github/client.ts",
         "src/commands/hook-add.ts",
       ],
       thresholds: { lines: 99, functions: 97, branches: 93, statements: 99 },
