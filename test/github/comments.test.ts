@@ -883,6 +883,33 @@ describe("replyToComment", () => {
     expect(updateCall!.body).toContain("- Re: comment 123 — msg");
   });
 
+  it("falls back to stale body when getComment fails", async () => {
+    const existingBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — First`;
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.createReplyForReviewComment).mockRejectedValue({
+      status: 404,
+      message: "Not Found",
+    });
+    vi.mocked(octokit.paginate).mockResolvedValue([
+      { id: 50, body: existingBody, updated_at: "2024-01-01T00:00:00Z" },
+    ]);
+    // getComment fails (e.g., rate limited)
+    vi.mocked(octokit.rest.issues.getComment).mockRejectedValue(new Error("rate limited"));
+    // PATCH with stale body
+    vi.mocked(octokit.rest.issues.updateComment).mockResolvedValue({
+      data: { html_url: "https://fallback" },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await replyToComment("o", "r", 1, 123, "msg", octokit);
+    expect(result.html_url).toBe("https://fallback");
+    const updateCall = vi.mocked(octokit.rest.issues.updateComment).mock.calls[0]?.[0];
+    expect(updateCall!.body).toContain("- Re: comment 100 — First");
+    expect(updateCall!.body).toContain("- Re: comment 123 — msg");
+  });
+
   it("picks most recently updated tracking comment", async () => {
     const oldBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 50 — Old`;
     const newBody = `${TRACKING_COMMENT_MARKER}\n**Handled comments:**\n- Re: comment 100 — New`;

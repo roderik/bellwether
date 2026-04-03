@@ -331,6 +331,25 @@ describe("fetchPRMergeState", () => {
     expect(result.mergeable).toBe(false);
   });
 
+  it("defaults mergeableState to unknown when field is non-string", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: {
+        state: "open",
+        merged: false,
+        mergeable: null,
+        mergeable_state: undefined,
+        head: { sha: "abc123" },
+        base: { ref: "main" },
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    const result = await fetchPRMergeState("o", "r", 1, octokit);
+    expect(result.mergeableState).toBe("unknown");
+  });
+
   it("throws on API error", async () => {
     const octokit = createMockOctokit();
     vi.mocked(octokit.rest.pulls.get).mockRejectedValue({ status: 404, message: "Not Found" });
