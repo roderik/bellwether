@@ -89,7 +89,7 @@ describe("hookCheckCommand", () => {
     expect(ok).toHaveBeenCalledWith({
       hookSpecificOutput: {
         hookEventName: "PostToolUse",
-        additionalContext: expect.stringContaining("bellwether"),
+        additionalContext: expect.stringContaining("Resume the Bellwether loop now"),
       },
     });
   });
@@ -485,7 +485,7 @@ describe("hookCheckCommand", () => {
     await hookCheckCommand.run({ ok });
     expect(ok).toHaveBeenCalledWith({
       decision: "block",
-      reason: expect.stringContaining("bellwether check --watch"),
+      reason: expect.stringContaining("Do not stop while any CI job is still pending or in progress"),
     });
   });
 
