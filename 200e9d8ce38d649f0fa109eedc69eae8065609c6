@@ -1,0 +1,75 @@
+src/commands/hook-check.ts
+  92e15bbe6581cfee 93
+src/commands/check.ts
+  92e15bbe6581cfee 245,262,437,442,451
+test/commands/check.test.ts
+  92e15bbe6581cfee 70,579
+src/github/checks.ts
+  92e15bbe6581cfee 1,94,97-102,116,121,126-132,150
+src/github/index.ts
+  92e15bbe6581cfee 1,5
+test/github/comments.test.ts
+  92e15bbe6581cfee 11,58-80,711-737,794-801,805,815-822,827-843,845-848,853-861,863-878,881-883,889-896,898-913,916-917,921-929,933-941,951-955,958-959,964-970,974-975,980-988,992-998,1003-1011,1015-1022,1026-1032,1034,1038-1040,1044-1048
+test/github/sync.test.ts
+  92e15bbe6581cfee 14,18-34,36-40,70-78,80-88,92-101,104-111,114-121,124-126,128,130-131,134-136,138,140-141,144-146,148,150,155-157,300-302
+test/commands/sync.test.ts
+  92e15bbe6581cfee 17,26-32,34-45,55-59,70,84-87,89-97,107,128,138,146,160,166,169-171,176-197,216,229,245,254
+src/github/client.ts
+  92e15bbe6581cfee 1-28
+src/github/sync.ts
+  92e15bbe6581cfee 2,33,35-44,46-55,57-63,65-67
+test/commands/reviews.test.ts
+  92e15bbe6581cfee 51,175,198
+test/github/repo.test.ts
+  92e15bbe6581cfee 11,46-70,163-170,175-182,187-192,202-207,209-212,217-219,221-222,232-246,257-271,276-290,295-309,315-329,335-340,345-353,357-362,366-380,384-390,394-397
+src/commands/ci.ts
+  92e15bbe6581cfee 34-35
+src/commands/reviews.ts
+  92e15bbe6581cfee 10,55,57,73,75,93,108,115,163,173,177,187,199
+src/github/comments.ts
+  92e15bbe6581cfee 1,81,148,162,171,188,191-208,377,380-392,395-402,404-416,418-424,426,429-435,437,445,476-484,491-495,531
+test/github/checks.test.ts
+  92e15bbe6581cfee 3,5-27,41-86,88-98,100,117-141,143-152,154,160-177,179-182,184,191-202,204-207,209,215-220,224-238,242-259,261-265,267,272-297,302-319,321-326,342-359,361-370,372,387-404,406-415,417,423-435,437,443-455
+test/context.test.ts
+  92e15bbe6581cfee 5,48,71
+test/github/client.test.ts
+  92e15bbe6581cfee 1-13
+src/github/fetch.ts
+  92e15bbe6581cfee 11,14-16,18-19,22,43-47,66,71-78,82-83,111,113-114,118,122,125,127-128,131-137
+src/commands/sync.ts
+  92e15bbe6581cfee 3-4,35,37-39,56-60,103,114-119
+test/commands/hook-check.test.ts
+  92e15bbe6581cfee 48
+vitest.config.ts
+  92e15bbe6581cfee 12
+test/commands/ci.test.ts
+  92e15bbe6581cfee 77,86,88
+src/github/repo.ts
+  92e15bbe6581cfee 2,76,78-86,88-94,100,102-114,133,135-139,141,143,153,155-168,178
+src/context.ts
+  92e15bbe6581cfee 9-10,15,39,46,57,63
+test/github/fetch-internal.test.ts
+  92e15bbe6581cfee 27,37,57,61,98,113,131,145,157,178,195,197-199,207,219
+test/github/fetch.test.ts
+  92e15bbe6581cfee 1-2,10,13-16,19,21-23,28-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "200e9d8ce38d649f0fa109eedc69eae8065609c6",
+  "prompts": {
+    "92e15bbe6581cfee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56abb1c7-b082-4f7c-a254-879f9c3a7fc8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer",
+      "messages": [],
+      "total_additions": 1343,
+      "total_deletions": 1635,
+      "accepted_lines": 1289,
+      "overriden_lines": 0
+    }
+  }
+}
