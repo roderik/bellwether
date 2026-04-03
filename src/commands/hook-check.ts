@@ -112,7 +112,7 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
     return {};
   }
 
-  const { branch, prNumber, error: prResolutionError } = await resolveCurrentBranchPR();
+  const { prNumber, error: prResolutionError } = await resolveCurrentBranchPR();
   if (prResolutionError || !prNumber) {
     return {};
   }
@@ -142,8 +142,7 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
   // Advisory: tell the agent the PR state without blocking
   const mergeable =
     typeof output.pr.mergeable === "string" ? ` (mergeable: ${output.pr.mergeable})` : "";
-  const ciSummary =
-    output.ci?.checks !== undefined ? ` Checks: ${String(output.ci.checks)}.` : "";
+  const ciSummary = output.ci?.checks === undefined ? "" : ` Checks: ${String(output.ci.checks)}.`;
   return {
     reason: `PR #${prNumber} is not yet merge-ready${mergeable}.${ciSummary} Consider running \`bellwether check --watch\` when ready to bring it to a mergeable state.`,
   };
