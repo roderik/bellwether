@@ -6,53 +6,20 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const USER_AGENT = "bellwether";
 
 // ---------------------------------------------------------------------------
-// Types
+// Header parsing (for curl responses)
 // ---------------------------------------------------------------------------
 
-export type ProxyFetch = (url: string, options?: ProxyFetchOptions) => Promise<ProxyFetchResponse>;
-
-export interface ProxyFetchOptions {
-  method?: string;
-  headers?: Record<string, string>;
-  body?: string;
-}
-
-interface HeaderMap {
-  get(name: string): string | null;
-}
-
-export interface ProxyFetchResponse {
-  ok: boolean;
-  status: number;
-  headers: HeaderMap;
-  text(): Promise<string>;
-  json(): Promise<unknown>;
-}
-
-// ---------------------------------------------------------------------------
-// Header parsing (for curl responses & proxied headers)
-// ---------------------------------------------------------------------------
-
-function parseHeaderMap(rawHeaders: string): HeaderMap {
-  const lines = rawHeaders.split(/\r?\n/).filter(Boolean);
-  const map = new Map<string, string>();
-  for (const line of lines) {
+function parseHeaders(rawHeaders: string): [string, string][] {
+  const entries: [string, string][] = [];
+  for (const line of rawHeaders.split(/\r?\n/).filter(Boolean)) {
     const idx = line.indexOf(":");
-    if (idx === -1) {
-      continue;
+    if (idx !== -1) {
+      entries.push([line.slice(0, idx).trim(), line.slice(idx + 1).trim()]);
     }
-    const key = line.slice(0, idx).trim().toLowerCase();
-    const value = line.slice(idx + 1).trim();
-    map.set(key, value);
   }
-  return {
-    get(name: string) {
-      return map.get(String(name).toLowerCase()) ?? null;
-    },
-  };
+  return entries;
 }
 
 function parseLastHeaderBlock(headerContent: string): string {
@@ -73,8 +40,12 @@ function parseLastHeaderBlock(headerContent: string): string {
 // Curl-based fetch (fallback when undici is unavailable behind a proxy)
 // ---------------------------------------------------------------------------
 
-function createCurlFetch(): ProxyFetch {
-  return async (url: string, options: ProxyFetchOptions = {}) => {
+function createCurlFetch(): typeof globalThis.fetch {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const url =
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const method = init?.method ?? "GET";
+
     const tempDir = mkdtempSync(join(tmpdir(), "bellwether-"));
     const headersFile = join(tempDir, "headers.txt");
     const bodyFile = join(tempDir, "body.txt");
@@ -92,18 +63,24 @@ function createCurlFetch(): ProxyFetch {
       "--output",
       bodyFile,
       "--request",
-      options.method ?? "GET",
+      method,
       "--write-out",
       "%{http_code}",
     ];
 
-    if (options.headers) {
-      for (const [key, value] of Object.entries(options.headers)) {
+    if (init?.headers) {
+      const headers =
+        init.headers instanceof Headers
+          ? Object.fromEntries(init.headers.entries())
+          : Array.isArray(init.headers)
+            ? Object.fromEntries(init.headers)
+            : (init.headers as Record<string, string>);
+      for (const [key, value] of Object.entries(headers)) {
         args.push("--header", `${key}: ${value}`);
       }
     }
-    if (options.body) {
-      args.push("--data", options.body);
+    if (init?.body) {
+      args.push("--data", typeof init.body === "string" ? init.body : JSON.stringify(init.body));
     }
 
     args.push(String(url));
@@ -131,102 +108,32 @@ function createCurlFetch(): ProxyFetch {
       const headersRaw = await readFile(headersFile, "utf-8");
       const lastHeaderBlock = parseLastHeaderBlock(headersRaw);
 
-      return {
-        ok: status >= 200 && status < 300,
+      return new Response(body, {
         status,
-        headers: parseHeaderMap(lastHeaderBlock),
-        async text() {
-          return body;
-        },
-        async json() {
-          return JSON.parse(body || "null");
-        },
-      };
+        headers: parseHeaders(lastHeaderBlock),
+      });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
-  };
+  }) as typeof globalThis.fetch;
 }
 
 // ---------------------------------------------------------------------------
-// Proxy-aware fetch factory
+// Proxy-aware fetch factory (returns standard fetch or undefined for default)
 // ---------------------------------------------------------------------------
 
-export function getProxyFetch(): ProxyFetch {
+export function getProxyAwareFetch(): typeof globalThis.fetch | undefined {
   const proxyUrl = process.env.HTTPS_PROXY ?? process.env.https_proxy;
-  if (proxyUrl) {
-    try {
-      const { ProxyAgent, fetch: undiciFetch } = require("undici");
-      const agent = new ProxyAgent(proxyUrl);
-      return ((url: string, options: ProxyFetchOptions = {}) =>
-        undiciFetch(url, { ...options, dispatcher: agent })) as ProxyFetch;
-    } catch {
-      return createCurlFetch();
-    }
+  if (!proxyUrl) {
+    return undefined;
   }
 
-  return async (url: string, options: ProxyFetchOptions = {}) => {
-    const response = await fetch(url, options);
-    return {
-      ok: response.ok,
-      status: response.status,
-      headers: { get: (name: string) => response.headers.get(name) },
-      text: () => response.text(),
-      json: () => response.json(),
-    };
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Authenticated GitHub fetch + pagination
-// ---------------------------------------------------------------------------
-
-function authHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    Accept: "application/vnd.github.v3+json",
-    "User-Agent": USER_AGENT,
-  };
-}
-
-export async function ghFetch(
-  url: string,
-  token: string,
-  proxyFetch: ProxyFetch,
-  options: ProxyFetchOptions = {},
-): Promise<ProxyFetchResponse> {
-  return proxyFetch(url, {
-    ...options,
-    headers: { ...authHeaders(token), ...options.headers },
-  });
-}
-
-export async function fetchAllPages<T>(
-  url: string,
-  token: string,
-  proxyFetch: ProxyFetch,
-): Promise<T[]> {
-  const results: T[] = [];
-  let nextUrl: string | null = url;
-
-  while (nextUrl) {
-    const response = await ghFetch(nextUrl, token, proxyFetch);
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
-    }
-
-    const data = (await response.json()) as T[];
-    results.push(...data);
-
-    const linkHeader = response.headers.get("link");
-    nextUrl = null;
-    if (linkHeader) {
-      const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-      if (nextMatch?.[1]) {
-        nextUrl = nextMatch[1];
-      }
-    }
+  try {
+    const { ProxyAgent, fetch: undiciFetch } = require("undici");
+    const agent = new ProxyAgent(proxyUrl);
+    return ((url: string | URL | Request, init?: RequestInit) =>
+      undiciFetch(url, { ...init, dispatcher: agent })) as typeof globalThis.fetch;
+  } catch {
+    return createCurlFetch();
   }
-
-  return results;
 }

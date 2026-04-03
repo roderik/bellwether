@@ -67,7 +67,7 @@ function getOkMeta<T>(c: ReturnType<typeof makeCtx>): T {
 
 function makeCtx(optOverrides: Record<string, unknown> = {}) {
   return {
-    var: { ctx: { token: "tok", repoInfo: { owner: "o", repo: "r" }, proxyFetch: vi.fn() } },
+    var: { ctx: { repoInfo: { owner: "o", repo: "r" }, octokit: {} as never } },
     args: { pr: undefined as number | undefined },
     options: {
       watch: false,
@@ -576,7 +576,7 @@ describe("checkCommand.run", () => {
     // CI and reviews should NOT be fetched — they'd be stale after sync
     expect(mockGetCI).not.toHaveBeenCalled();
     expect(mockGetReviews).not.toHaveBeenCalled();
-    expect(mockUpdatePRBranch).toHaveBeenCalledWith("o", "r", 1, "tok", expect.any(Function));
+    expect(mockUpdatePRBranch).toHaveBeenCalledWith("o", "r", 1, expect.anything());
     const data = getOkData<{ pr: { synced: boolean } }>(c);
     expect(data.pr.synced).toBe(true);
   });

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { ghFetch, type ProxyFetch } from "./fetch.js";
+import { type GitHubClient } from "./client.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,55 +30,42 @@ export async function updatePRBranch(
   repo: string,
   prNumber: number,
   expectedHeadSha: string | undefined,
-  token: string,
-  proxyFetch: ProxyFetch,
+  octokit: GitHubClient,
 ): Promise<UpdateBranchResult> {
-  const body: Record<string, string> = {};
-  if (expectedHeadSha) {
-    body.expected_head_sha = expectedHeadSha;
-  }
+  try {
+    const response = await octokit.request(
+      "PUT /repos/{owner}/{repo}/pulls/{pull_number}/update-branch",
+      {
+        owner,
+        repo,
+        pull_number: prNumber,
+        ...(expectedHeadSha ? { expected_head_sha: expectedHeadSha } : {}),
+      },
+    );
 
-  const response = await ghFetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
-    token,
-    proxyFetch,
-    {
-      method: "PUT",
-      body: JSON.stringify(body),
-      headers: { "Content-Type": "application/json" },
-    },
-  );
-
-  if (response.status === 202) {
-    const data = (await response.json()) as { message: string; url: string };
-    return { updated: true, message: data.message };
-  }
-
-  if (response.status === 204) {
-    return { updated: true, message: "Branch already up to date" };
-  }
-
-  if (response.status === 422) {
-    let message = "Branch update failed";
-    const text = await response.text();
-    if (text) {
-      try {
-        const parsed = JSON.parse(text) as { message?: string } | null;
-        message = typeof parsed?.message === "string" ? parsed.message : text;
-      } catch {
-        message = text;
+    const message = (response.data as { message?: string }).message ?? "Branch update accepted";
+    return { updated: true, message };
+  } catch (error: unknown) {
+    const errStatus = (error as { status?: number }).status;
+    if (errStatus === 422) {
+      let message = "Branch update failed";
+      const responseMessage = (error as { response?: { data?: { message?: string } } }).response
+        ?.data?.message;
+      if (typeof responseMessage === "string") {
+        message = responseMessage;
       }
+      const lower = message.toLowerCase();
+      const alreadyUpToDate =
+        lower.includes("update is not required") ||
+        lower.includes("no commits between") ||
+        lower.includes("already up to date") ||
+        lower.includes("up to date");
+      return { updated: alreadyUpToDate, message };
     }
-    const lower = message.toLowerCase();
-    const alreadyUpToDate =
-      lower.includes("update is not required") ||
-      lower.includes("no commits between") ||
-      lower.includes("already up to date") ||
-      lower.includes("up to date");
-    return { updated: alreadyUpToDate, message };
+    throw new Error(`update-branch API returned unexpected status: ${errStatus ?? "unknown"}`, {
+      cause: error,
+    });
   }
-
-  throw new Error(`update-branch API returned unexpected status: ${response.status}`);
 }
 
 // ---------------------------------------------------------------------------

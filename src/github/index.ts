@@ -1,13 +1,8 @@
-export {
-  type ProxyFetch,
-  type ProxyFetchOptions,
-  type ProxyFetchResponse,
-  getProxyFetch,
-  ghFetch,
-  fetchAllPages,
-} from "./fetch.js";
+export { getProxyAwareFetch } from "./fetch.js";
 
 export { getGitHubToken } from "./auth.js";
+
+export { type GitHubClient, createGitHubClient } from "./client.js";
 
 export {
   type RepoInfo,

@@ -8,6 +8,7 @@ import {
   fetchPRMergeState,
   updatePRBranch,
 } from "../../src/github/repo.js";
+import { type GitHubClient } from "../../src/github/client.js";
 
 vi.mock("node:child_process", () => ({
   spawnSync: vi.fn(),
@@ -40,6 +41,31 @@ function setSpawnFail() {
     output: [],
     signal: null,
   });
+}
+
+function createMockOctokit(overrides = {}) {
+  return {
+    rest: {
+      pulls: {
+        list: vi.fn(),
+        get: vi.fn(),
+        createReplyForReviewComment: vi.fn(),
+        listReviewComments: vi.fn(),
+        listReviews: vi.fn(),
+      },
+      issues: {
+        listComments: vi.fn(),
+        getComment: vi.fn(),
+        updateComment: vi.fn(),
+        createComment: vi.fn(),
+      },
+      checks: { listForRef: vi.fn() },
+    },
+    paginate: vi.fn(),
+    graphql: vi.fn(),
+    request: vi.fn(),
+    ...overrides,
+  } as unknown as GitHubClient;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,16 +152,6 @@ describe("getCurrentBranch", () => {
 // ---------------------------------------------------------------------------
 
 describe("findPRForBranch", () => {
-  function mockFetch(data: unknown, ok = true, status = 200) {
-    return vi.fn(async () => ({
-      ok,
-      status,
-      headers: { get: () => null },
-      text: async () => JSON.stringify(data),
-      json: async () => data,
-    }));
-  }
-
   it("returns first PR", async () => {
     const pr = {
       number: 42,
@@ -144,22 +160,36 @@ describe("findPRForBranch", () => {
       head: { sha: "abc", ref: "feat" },
       state: "open",
     };
-    const pf = mockFetch([pr]);
-    const result = await findPRForBranch("o", "r", "feat", "tok", pf);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.list).mockResolvedValue({
+      data: [pr],
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    const result = await findPRForBranch("o", "r", "feat", octokit);
     expect(result).toEqual(pr);
   });
 
   it("returns null when no PRs", async () => {
-    const pf = mockFetch([]);
-    const result = await findPRForBranch("o", "r", "feat", "tok", pf);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.list).mockResolvedValue({
+      data: [],
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    const result = await findPRForBranch("o", "r", "feat", octokit);
     expect(result).toBeNull();
   });
 
   it("throws on API error", async () => {
-    const pf = mockFetch(null, false, 404);
-    await expect(findPRForBranch("o", "r", "feat", "tok", pf)).rejects.toThrow(
-      "Failed to find PR: 404",
-    );
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.list).mockRejectedValue({ status: 404, message: "Not Found" });
+    await expect(findPRForBranch("o", "r", "feat", octokit)).rejects.toEqual({
+      status: 404,
+      message: "Not Found",
+    });
   });
 });
 
@@ -169,27 +199,27 @@ describe("findPRForBranch", () => {
 
 describe("listOpenPRs", () => {
   it("returns PRs", async () => {
-    const prs = [{ number: 1 }];
-    const pf = vi.fn(async () => ({
-      ok: true,
+    const prs = [
+      { number: 1, title: "PR1", html_url: "url1", head: { ref: "b1", sha: "s1" }, state: "open" },
+    ];
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.list).mockResolvedValue({
+      data: prs,
       status: 200,
-      headers: { get: () => null },
-      text: async () => JSON.stringify(prs),
-      json: async () => prs,
-    }));
-    const result = await listOpenPRs("o", "r", "tok", pf);
+      headers: {},
+      url: "",
+    } as never);
+    const result = await listOpenPRs("o", "r", octokit);
     expect(result).toEqual(prs);
   });
 
   it("throws on API error", async () => {
-    const pf = vi.fn(async () => ({
-      ok: false,
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.list).mockRejectedValue({ status: 500, message: "Server Error" });
+    await expect(listOpenPRs("o", "r", octokit)).rejects.toEqual({
       status: 500,
-      headers: { get: () => null },
-      text: async () => "err",
-      json: async () => ({}),
-    }));
-    await expect(listOpenPRs("o", "r", "tok", pf)).rejects.toThrow("Failed to list PRs: 500");
+      message: "Server Error",
+    });
   });
 });
 
@@ -198,26 +228,22 @@ describe("listOpenPRs", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchPRMergeState", () => {
-  function mockFetch(data: unknown, ok = true, status = 200) {
-    return vi.fn(async () => ({
-      ok,
-      status,
-      headers: { get: () => null },
-      text: async () => JSON.stringify(data),
-      json: async () => data,
-    }));
-  }
-
   it("returns open state with clean mergeable_state", async () => {
-    const pf = mockFetch({
-      state: "open",
-      merged: false,
-      mergeable: true,
-      mergeable_state: "clean",
-      head: { sha: "abc123" },
-      base: { ref: "main" },
-    });
-    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: {
+        state: "open",
+        merged: false,
+        mergeable: true,
+        mergeable_state: "clean",
+        head: { sha: "abc123" },
+        base: { ref: "main" },
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    const result = await fetchPRMergeState("o", "r", 1, octokit);
     expect(result).toEqual({
       state: "open",
       mergeable: true,
@@ -228,116 +254,165 @@ describe("fetchPRMergeState", () => {
   });
 
   it("returns merged state when pr.merged is true", async () => {
-    const pf = mockFetch({
-      state: "closed",
-      merged: true,
-      mergeable: false,
-      mergeable_state: "unknown",
-      head: { sha: "abc123" },
-      base: { ref: "main" },
-    });
-    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: {
+        state: "closed",
+        merged: true,
+        mergeable: false,
+        mergeable_state: "unknown",
+        head: { sha: "abc123" },
+        base: { ref: "main" },
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    const result = await fetchPRMergeState("o", "r", 1, octokit);
     expect(result.state).toBe("merged");
   });
 
   it("returns closed state when not merged", async () => {
-    const pf = mockFetch({
-      state: "closed",
-      merged: false,
-      mergeable: null,
-      mergeable_state: "unknown",
-      head: { sha: "abc123" },
-      base: { ref: "main" },
-    });
-    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: {
+        state: "closed",
+        merged: false,
+        mergeable: null,
+        mergeable_state: "unknown",
+        head: { sha: "abc123" },
+        base: { ref: "main" },
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    const result = await fetchPRMergeState("o", "r", 1, octokit);
     expect(result.state).toBe("closed");
   });
 
   it("returns null mergeable when still computing", async () => {
-    const pf = mockFetch({
-      state: "open",
-      merged: false,
-      mergeable: null,
-      mergeable_state: "unknown",
-      head: { sha: "abc123" },
-      base: { ref: "main" },
-    });
-    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: {
+        state: "open",
+        merged: false,
+        mergeable: null,
+        mergeable_state: "unknown",
+        head: { sha: "abc123" },
+        base: { ref: "main" },
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    const result = await fetchPRMergeState("o", "r", 1, octokit);
     expect(result.mergeable).toBeNull();
     expect(result.mergeableState).toBe("unknown");
   });
 
   it("returns dirty mergeableState for conflicting PR", async () => {
-    const pf = mockFetch({
-      state: "open",
-      merged: false,
-      mergeable: false,
-      mergeable_state: "dirty",
-      head: { sha: "abc123" },
-      base: { ref: "main" },
-    });
-    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: {
+        state: "open",
+        merged: false,
+        mergeable: false,
+        mergeable_state: "dirty",
+        head: { sha: "abc123" },
+        base: { ref: "main" },
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    const result = await fetchPRMergeState("o", "r", 1, octokit);
     expect(result.mergeableState).toBe("dirty");
     expect(result.mergeable).toBe(false);
   });
 
-  it("defaults mergeableState to unknown when missing", async () => {
-    const pf = mockFetch({
-      state: "open",
-      merged: false,
-      mergeable: null,
-      head: { sha: "abc123" },
-      base: { ref: "main" },
-    });
-    const result = await fetchPRMergeState("o", "r", 1, "tok", pf);
+  it("defaults mergeableState to unknown when field is non-string", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: {
+        state: "open",
+        merged: false,
+        mergeable: null,
+        mergeable_state: undefined,
+        head: { sha: "abc123" },
+        base: { ref: "main" },
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    const result = await fetchPRMergeState("o", "r", 1, octokit);
     expect(result.mergeableState).toBe("unknown");
   });
 
   it("throws on API error", async () => {
-    const pf = mockFetch(null, false, 404);
-    await expect(fetchPRMergeState("o", "r", 1, "tok", pf)).rejects.toThrow(
-      "Failed to fetch PR merge state: 404",
-    );
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockRejectedValue({ status: 404, message: "Not Found" });
+    await expect(fetchPRMergeState("o", "r", 1, octokit)).rejects.toEqual({
+      status: 404,
+      message: "Not Found",
+    });
   });
 });
 
 describe("updatePRBranch", () => {
-  function mockFetch(data: unknown, ok = true, status = 202) {
-    return vi.fn(async () => ({
-      ok,
-      status,
-      headers: { get: () => null },
-      text: async () => JSON.stringify(data),
-      json: async () => data,
-    }));
-  }
-
-  it("resolves on 202 accepted", async () => {
-    const pf = mockFetch({ message: "Scheduled" });
-    await expect(updatePRBranch("o", "r", 1, "tok", pf)).resolves.toBeUndefined();
+  it("resolves on successful update", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: {},
+      status: 202,
+      headers: {},
+      url: "",
+    } as never);
+    await expect(updatePRBranch("o", "r", 1, octokit)).resolves.toBeUndefined();
   });
 
   it("resolves on 422 already up to date", async () => {
-    const pf = mockFetch({ message: "Update is not required" }, false, 422);
-    await expect(updatePRBranch("o", "r", 1, "tok", pf)).resolves.toBeUndefined();
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.request).mockRejectedValue({
+      status: 422,
+      response: { data: { message: "Update is not required" } },
+    });
+    await expect(updatePRBranch("o", "r", 1, octokit)).resolves.toBeUndefined();
   });
 
   it("resolves on 422 no commits between", async () => {
-    const pf = mockFetch({ message: "No commits between main and feat" }, false, 422);
-    await expect(updatePRBranch("o", "r", 1, "tok", pf)).resolves.toBeUndefined();
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.request).mockRejectedValue({
+      status: 422,
+      response: { data: { message: "No commits between main and feat" } },
+    });
+    await expect(updatePRBranch("o", "r", 1, octokit)).resolves.toBeUndefined();
+  });
+
+  it("resolves on 422 up to date", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.request).mockRejectedValue({
+      status: 422,
+      response: { data: { message: "Already up to date" } },
+    });
+    await expect(updatePRBranch("o", "r", 1, octokit)).resolves.toBeUndefined();
   });
 
   it("throws on 422 with non-uptodate message", async () => {
-    const pf = mockFetch({ message: "Validation Failed" }, false, 422);
-    await expect(updatePRBranch("o", "r", 1, "tok", pf)).rejects.toThrow(
-      "Failed to update PR branch: 422",
-    );
+    const octokit = createMockOctokit();
+    const error = {
+      status: 422,
+      response: { data: { message: "Validation Failed" } },
+    };
+    vi.mocked(octokit.request).mockRejectedValue(error);
+    await expect(updatePRBranch("o", "r", 1, octokit)).rejects.toBe(error);
   });
 
   it("throws on non-422 error", async () => {
-    const pf = mockFetch(null, false, 403);
-    await expect(updatePRBranch("o", "r", 1, "tok", pf)).rejects.toThrow(
-      "Failed to update PR branch: 403",
-    );
+    const octokit = createMockOctokit();
+    const error = { status: 403, message: "Forbidden" };
+    vi.mocked(octokit.request).mockRejectedValue(error);
+    await expect(updatePRBranch("o", "r", 1, octokit)).rejects.toBe(error);
   });
 });

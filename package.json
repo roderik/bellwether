@@ -49,6 +49,9 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.1.0",
+    "@octokit/plugin-retry": "^8.1.0",
+    "@octokit/plugin-throttling": "^11.0.3",
+    "@octokit/rest": "^22.0.1",
     "incur": "^0.3.13"
   },
   "scripts": {

@@ -48,7 +48,7 @@ const comment = {
   isResolved: false,
 };
 
-const ctx = { token: "tok", repoInfo: { owner: "o", repo: "r" }, proxyFetch: vi.fn() };
+const ctx = { repoInfo: { owner: "o", repo: "r" }, octokit: {} as never };
 const filterOpts = { unresolved: false, unanswered: false, botsOnly: false, humansOnly: false };
 
 function setupMocks(comments: ProcessedComment[] = [comment]) {
@@ -172,7 +172,7 @@ describe("watchForComments", () => {
   it("times out when no new comments", async () => {
     setupMocks();
     const result = await watchForComments(
-      { owner: "o", repo: "r", prNumber: 1, token: "tok", proxyFetch: vi.fn() },
+      { owner: "o", repo: "r", prNumber: 1, octokit: {} as never },
       { watchInterval: 0.001, watchTimeout: 0 },
     );
     expect(result.timedOut).toBe(true);
@@ -195,7 +195,7 @@ describe("watchForComments", () => {
     mockFilter.mockReturnValueOnce([newComment, graceComment]);
 
     const promise = watchForComments(
-      { owner: "o", repo: "r", prNumber: 1, token: "tok", proxyFetch: vi.fn() },
+      { owner: "o", repo: "r", prNumber: 1, octokit: {} as never },
       { watchInterval: 0.001, watchTimeout: 10 },
     );
     await vi.advanceTimersByTimeAsync(100);

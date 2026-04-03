@@ -24,7 +24,7 @@ vi.mock("node:module", () => ({
 
 import { spawnSync } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
-import { getProxyFetch } from "../../src/github/fetch.js";
+import { getProxyAwareFetch } from "../../src/github/fetch.js";
 
 const mockSpawnSync = vi.mocked(spawnSync);
 const mockReadFile = vi.mocked(readFile);
@@ -34,9 +34,7 @@ function asReadFileResult(value: string) {
   return value as Awaited<ReturnType<typeof readFile>>;
 }
 
-function asSpawnResult(
-  value: Partial<ReturnType<typeof spawnSync>>,
-): ReturnType<typeof spawnSync> {
+function asSpawnResult(value: Partial<ReturnType<typeof spawnSync>>): ReturnType<typeof spawnSync> {
   return {
     stdout: "",
     status: 0,
@@ -56,11 +54,11 @@ beforeEach(() => {
   mockRm.mockClear();
 });
 
-describe("curl-based fetch (via getProxyFetch with proxy)", () => {
+describe("curl-based fetch (via getProxyAwareFetch with proxy)", () => {
   it("creates curl fetch and parses response", async () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
 
-    const pf = getProxyFetch();
+    const pf = getProxyAwareFetch()!;
 
     // Mock curl execution
     mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
@@ -86,7 +84,6 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     expect(result.headers.get("x-custom")).toBe("val");
     expect(result.headers.get("nonexistent")).toBeNull();
     expect(await result.text()).toBe('{"result": true}');
-    expect(await result.json()).toEqual({ result: true });
 
     // Verify curl was called with correct args
     const curlArgs = mockSpawnSync.mock.calls[0][1] as string[];
@@ -98,7 +95,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
 
   it("handles non-ok status", async () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
-    const pf = getProxyFetch();
+    const pf = getProxyAwareFetch()!;
 
     mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "404" }));
     mockReadFile
@@ -111,23 +108,9 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
     expect(result.status).toBe(404);
   });
 
-  it("parses empty body as null in json()", async () => {
-    process.env.HTTPS_PROXY = "http://proxy:8080";
-    const pf = getProxyFetch();
-
-    mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
-    mockReadFile
-      .mockResolvedValueOnce(asReadFileResult(""))
-      .mockResolvedValueOnce(asReadFileResult("HTTP/1.1 200 OK\r\n"));
-    mockRm.mockResolvedValue(undefined);
-
-    const result = await pf("https://api.github.com/empty");
-    expect(await result.json()).toBeNull();
-  });
-
   it("handles redirect header blocks (multiple HTTP status lines)", async () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
-    const pf = getProxyFetch();
+    const pf = getProxyAwareFetch()!;
 
     mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
     mockReadFile
@@ -145,7 +128,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
 
   it("handles headers with no HTTP/ prefix gracefully", async () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
-    const pf = getProxyFetch();
+    const pf = getProxyAwareFetch()!;
 
     mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
     mockReadFile
@@ -159,7 +142,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
 
   it("cleans up temp dir even on error", async () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
-    const pf = getProxyFetch();
+    const pf = getProxyAwareFetch()!;
 
     mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
     mockReadFile.mockRejectedValueOnce(new Error("read fail"));
@@ -171,7 +154,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
 
   it("makes GET request by default", async () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
-    const pf = getProxyFetch();
+    const pf = getProxyAwareFetch()!;
 
     mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
     mockReadFile
@@ -192,7 +175,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
 
   it("header parsing ignores lines without colons", async () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
-    const pf = getProxyFetch();
+    const pf = getProxyAwareFetch()!;
 
     mockSpawnSync.mockReturnValue(asSpawnResult({ stdout: "200" }));
     mockReadFile
@@ -209,9 +192,11 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
 
   it("throws when curl fails to start", async () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
-    const pf = getProxyFetch();
+    const pf = getProxyAwareFetch()!;
 
-    mockSpawnSync.mockReturnValue(asSpawnResult({ status: null, pid: 0, error: new Error("ENOENT") }));
+    mockSpawnSync.mockReturnValue(
+      asSpawnResult({ status: null, pid: 0, error: new Error("ENOENT") }),
+    );
     mockRm.mockResolvedValue(undefined);
 
     await expect(pf("https://api.github.com/test")).rejects.toThrow("curl failed to start: ENOENT");
@@ -219,7 +204,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
 
   it("throws when curl exits with non-zero status", async () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
-    const pf = getProxyFetch();
+    const pf = getProxyAwareFetch()!;
 
     mockSpawnSync.mockReturnValue(asSpawnResult({ status: 7, stderr: "Connection refused" }));
     mockRm.mockResolvedValue(undefined);
@@ -231,7 +216,7 @@ describe("curl-based fetch (via getProxyFetch with proxy)", () => {
 
   it("throws when curl returns invalid status code", async () => {
     process.env.HTTPS_PROXY = "http://proxy:8080";
-    const pf = getProxyFetch();
+    const pf = getProxyAwareFetch()!;
 
     mockSpawnSync.mockReturnValue(asSpawnResult({}));
     mockRm.mockResolvedValue(undefined);

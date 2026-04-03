@@ -74,7 +74,7 @@ describe("flatten", () => {
 describe("getCISection", () => {
   it("fetches CI status and returns both raw and flat", async () => {
     mockFetchCI.mockResolvedValue(baseStatus);
-    const ctx = { token: "tok", repoInfo: { owner: "o", repo: "r" }, proxyFetch: vi.fn() };
+    const ctx = { repoInfo: { owner: "o", repo: "r" }, octokit: {} as never };
     const result = await getCISection(ctx, 1);
     expect(result.status).toEqual(baseStatus);
     expect(result.flat.sha).toBe("abc");
@@ -83,8 +83,8 @@ describe("getCISection", () => {
 
   it("passes headSha to fetchCIStatus", async () => {
     mockFetchCI.mockResolvedValue(baseStatus);
-    const ctx = { token: "tok", repoInfo: { owner: "o", repo: "r" }, proxyFetch: vi.fn() };
+    const ctx = { repoInfo: { owner: "o", repo: "r" }, octokit: {} as never };
     await getCISection(ctx, 1, "sha123");
-    expect(mockFetchCI).toHaveBeenCalledWith("o", "r", 1, "tok", expect.anything(), "sha123");
+    expect(mockFetchCI).toHaveBeenCalledWith("o", "r", 1, expect.anything(), "sha123");
   });
 });

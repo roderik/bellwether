@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { ghFetch, type ProxyFetch } from "./fetch.js";
+import { type GitHubClient } from "./client.js";
 
 function spawnText(cmd: string[]): string | null {
   const [command, ...args] = cmd;
@@ -73,36 +73,45 @@ export async function findPRForBranch(
   owner: string,
   repo: string,
   branch: string,
-  token: string,
-  proxyFetch: ProxyFetch,
+  octokit: GitHubClient,
 ): Promise<PR | null> {
-  const response = await ghFetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls?head=${owner}:${branch}&state=open`,
-    token,
-    proxyFetch,
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to find PR: ${response.status}`);
+  const { data } = await octokit.rest.pulls.list({
+    owner,
+    repo,
+    head: `${owner}:${branch}`,
+    state: "open",
+  });
+  const pr = data[0];
+  if (!pr) {
+    return null;
   }
-  const prs = (await response.json()) as PR[];
-  return prs[0] ?? null;
+  return {
+    number: pr.number,
+    title: pr.title,
+    html_url: pr.html_url,
+    head: { ref: pr.head.ref, sha: pr.head.sha },
+    state: pr.state,
+  };
 }
 
 export async function listOpenPRs(
   owner: string,
   repo: string,
-  token: string,
-  proxyFetch: ProxyFetch,
+  octokit: GitHubClient,
 ): Promise<PR[]> {
-  const response = await ghFetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=30`,
-    token,
-    proxyFetch,
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to list PRs: ${response.status}`);
-  }
-  return (await response.json()) as PR[];
+  const { data } = await octokit.rest.pulls.list({
+    owner,
+    repo,
+    state: "open",
+    per_page: 30,
+  });
+  return data.map((pr) => ({
+    number: pr.number,
+    title: pr.title,
+    html_url: pr.html_url,
+    head: { ref: pr.head.ref, sha: pr.head.sha },
+    state: pr.state,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -117,35 +126,21 @@ export interface PRMergeState {
   baseBranch: string;
 }
 
-interface RawPRMergeData {
-  state: string;
-  merged: boolean;
-  mergeable: boolean | null;
-  mergeable_state?: string;
-  head: { sha: string };
-  base: { ref: string };
-}
-
 export async function fetchPRMergeState(
   owner: string,
   repo: string,
   prNumber: number,
-  token: string,
-  proxyFetch: ProxyFetch,
+  octokit: GitHubClient,
 ): Promise<PRMergeState> {
-  const response = await ghFetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
-    token,
-    proxyFetch,
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to fetch PR merge state: ${response.status}`);
-  }
-  const pr = (await response.json()) as RawPRMergeData;
+  const { data: pr } = await octokit.rest.pulls.get({
+    owner,
+    repo,
+    pull_number: prNumber,
+  });
   return {
-    state: pr.merged ? "merged" : (pr.state as "open" | "closed"),
+    state: pr.merged ? "merged" : pr.state,
     mergeable: pr.mergeable,
-    mergeableState: pr.mergeable_state ?? "unknown",
+    mergeableState: typeof pr.mergeable_state === "string" ? pr.mergeable_state : "unknown",
     headSha: pr.head.sha,
     baseBranch: pr.base.ref,
   };
@@ -155,25 +150,22 @@ export async function updatePRBranch(
   owner: string,
   repo: string,
   prNumber: number,
-  token: string,
-  proxyFetch: ProxyFetch,
+  octokit: GitHubClient,
 ): Promise<void> {
-  const response = await ghFetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
-    token,
-    proxyFetch,
-    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) },
-  );
-  // 202 = accepted/enqueued
-  if (response.ok) {
-    return;
-  }
-
-  // 422 = validation failed; may mean "already up to date" or "not applicable"
-  if (response.status === 422) {
-    try {
-      const body = (await response.json()) as { message?: string } | null;
-      const message = typeof body?.message === "string" ? body.message : "";
+  try {
+    await octokit.request("PUT /repos/{owner}/{repo}/pulls/{pull_number}/update-branch", {
+      owner,
+      repo,
+      pull_number: prNumber,
+    });
+  } catch (error: unknown) {
+    const status = (error as { status?: number }).status;
+    if (status === 422) {
+      const message =
+        typeof (error as { response?: { data?: { message?: string } } }).response?.data?.message ===
+        "string"
+          ? (error as { response: { data: { message: string } } }).response.data.message
+          : "";
       const normalized = message.toLowerCase();
       if (
         normalized.includes("update is not required") ||
@@ -182,10 +174,7 @@ export async function updatePRBranch(
       ) {
         return; // already up to date — treat as a successful no-op
       }
-    } catch {
-      // fall through to throw below
     }
+    throw error;
   }
-
-  throw new Error(`Failed to update PR branch: ${response.status}`);
 }
