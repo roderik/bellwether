@@ -1,0 +1,25 @@
+src/commands/hook-check.ts
+  92e15bbe6581cfee 115,145
+test/commands/hook-check.test.ts
+  92e15bbe6581cfee 219,257,273,275-276,279,295,297-298,301,315-319,352,365,378,391,404,418,432,434-435,457,476,478-479,502,517,519-520,523,538,540-541,544,557,559-560
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "25f6c3b78e68a22bf9d746e6e1814519759c4413",
+  "prompts": {
+    "92e15bbe6581cfee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56abb1c7-b082-4f7c-a254-879f9c3a7fc8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer",
+      "messages": [],
+      "total_additions": 51,
+      "total_deletions": 58,
+      "accepted_lines": 42,
+      "overriden_lines": 0
+    }
+  }
+}
