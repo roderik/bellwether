@@ -409,13 +409,19 @@ export async function replyToComment(
 
   if (trackingComment) {
     // Re-fetch the latest body to avoid stale read-modify-write
-    const { data: fresh } = await octokit.rest.issues.getComment({
-      owner,
-      repo,
-      comment_id: trackingComment.id,
-    });
+    let freshBody = trackingComment.body;
+    try {
+      const { data: fresh } = await octokit.rest.issues.getComment({
+        owner,
+        repo,
+        comment_id: trackingComment.id,
+      });
+      freshBody = fresh.body ?? freshBody;
+    } catch {
+      // Fall back to the body from listComments if re-fetch fails
+    }
 
-    const updatedBody = `${fresh.body}\n${newBullet}`;
+    const updatedBody = `${freshBody}\n${newBullet}`;
     const { data: updated } = await octokit.rest.issues.updateComment({
       owner,
       repo,

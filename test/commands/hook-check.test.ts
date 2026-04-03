@@ -554,6 +554,24 @@ describe("hookCheckCommand", () => {
     expect(call.decision).toBeUndefined();
   });
 
+  it("formats object-type checks via JSON.stringify in advisory", async () => {
+    setupStopMocks("feature/obj-checks", 102);
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({
+        pr: { state: "open", mergeable: "blocked", ready: false },
+        ci: { sha: "abc", checks: { total: 3, passing: 1 } },
+      }),
+      stderr: "",
+    });
+    mockStdin(JSON.stringify({ hook_event_name: "Stop", stop_hook_active: false }));
+    const { ok } = makeCtx();
+    await hookCheckCommand.run({ ok });
+    expect(ok).toHaveBeenCalledWith({
+      reason: expect.stringContaining('{"total":3,"passing":1}'),
+    });
+  });
+
   it("advises on Stop when bellwether omits readiness field", async () => {
     setupStopMocks("feature/missing-ready", 95);
     mockSpawnSync.mockReturnValue({

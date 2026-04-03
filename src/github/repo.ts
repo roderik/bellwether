@@ -140,7 +140,7 @@ export async function fetchPRMergeState(
   return {
     state: pr.merged ? "merged" : pr.state,
     mergeable: pr.mergeable,
-    mergeableState: pr.mergeable_state,
+    mergeableState: typeof pr.mergeable_state === "string" ? pr.mergeable_state : "unknown",
     headSha: pr.head.sha,
     baseBranch: pr.base.ref,
   };
