@@ -11,13 +11,14 @@ allowed-tools: Bash(npx bellwether *) Bash(bunx bellwether *) Bash(bellwether *)
 
 # Bellwether — Drive PR to Merge-Ready
 
-Self-contained cycle: watch CI -> fix failures -> address reviews -> watch again -> until merge-ready.
+Self-contained cycle: watch CI -> the instant work appears, fix it -> push -> watch again -> until merge-ready.
 
 IMPORTANT: Execute ALL work in the main thread. Do NOT use the Agent tool, Task tool, or spawn sub-agents. Track all state in your working memory (context window). This skill runs as a sequential loop — you fetch, evaluate, fix, commit, reply, then loop.
 
 ## Critical: Use the bellwether CLI
 
 - The ONLY way to check CI status, PR state, and reviews is `bellwether check --watch`. This command returns only when the PR is actually merge-ready (`pr.ready=true`), when actionable work appears (CI failures, unresolved reviews, merge conflicts), when the PR reaches a terminal state (`merged` or `closed`), or on timeout. It keeps polling while the PR is still not ready but there is nothing local to fix yet, including pending external checks and `mergeable=blocked|unstable|unknown`. Do NOT add sleep or polling.
+- **`pending` or `in_progress` CI is NOT success, NOT "probably fine", and NOT a reason to stop.** It means the loop is still running. Keep `bellwether check --watch` in control until it returns actionable work or `pr.ready=true`.
 - NEVER use `gh api`, `gh pr checks`, `gh pr view --json`, `gh api repos/*/check-runs`, or any manual GitHub API calls to check CI or review status.
 - NEVER use `sleep` to wait for CI. The `--watch` flag handles waiting internally.
 - NEVER parse review comments manually via `gh api`. The bellwether CLI returns them in structured format.
@@ -33,7 +34,7 @@ When `bellwether check --watch` returns, apply the first matching rule:
 | 1 | Any CI check is failing | Fix CI (Phase 1). Push. Restart watch. |
 | 2 | Any unresolved review comment is actionable | Fix comments (Phase 2). Push. Restart watch. |
 | 3 | `pr.mergeable=dirty\|behind` | Sync branch. Push. Restart watch. |
-| 4 | All checks pending, no actionable reviews | Wait/watch (restart watch). |
+| 4 | Any CI checks are pending or in progress, and there are no actionable reviews yet | Immediately restart `bellwether check --watch`. This is waiting, not success; do not report completion, do not stop, and do not say it will probably pass. |
 | 5 | `pr.ready=true` | Done. Report "merge-ready". |
 | 6 | `pr.state=merged\|closed` | Done. Report status. |
 | 7 | CI green, 0 unresolved reviews, only missing PR review approval | Done. Report "waiting for review approval". |
@@ -41,6 +42,8 @@ When `bellwether check --watch` returns, apply the first matching rule:
 **Status-only responses are forbidden when rule 1 or 2 applies.** If there are failing CI checks or unresolved actionable review comments, you MUST fix them — never respond with just a status summary.
 
 **Pending CI does not block review work.** If CI is pending but unresolved actionable review comments exist, fix the reviews (rule 2) immediately. Do not wait for CI to finish first.
+
+**The first moment new work appears, act immediately.** The instant `bellwether check --watch` returns with a CI failure, unresolved actionable review, merge conflict, or behind branch, start fixing it right away. Do not defer it to a later pass.
 
 **Unresolved review comments on touched or related code are always in scope.** Do not wait for a new user prompt. The only exceptions:
 - Remaining blockers are purely external/non-code and you have explicitly said so.
@@ -51,8 +54,13 @@ When `bellwether check --watch` returns, apply the first matching rule:
 ```
 1. bellwether check --watch        (returns only on pr.ready=true, actionable work, merged/closed PR state, or timeout; DO NOT substitute with gh/GitHub API calls — use this exact command)
 2. Apply the Decision Table above — the first matching rule determines your action
-3. If timed out -> go to 1 (restart watch)
+3. If timed out:
+   - If any CI job is still pending or in progress -> go to 1 (restart watch)
+   - If CI is green, unresolved reviews are 0, and the only remaining blocker is review approval or another external dependency you cannot clear yourself -> done, report that exact external blocker
+   - Otherwise -> go to 1 (restart watch)
 ```
+
+Never interpret a pending check or in-progress job as "close enough". Those states are never terminal. A timeout only becomes terminal when it confirms there is no actionable work left and the remaining blocker is purely external.
 
 ## What `bellwether check --watch` returns
 
@@ -69,12 +77,13 @@ Important: `allPassing=true` is not sufficient on its own. The only success cond
 For each `FAIL` key in the CI section:
 
 1. **Read the error log** — it contains actual compiler/test output with file paths and line numbers.
-2. **Fix the code** — minimal change that resolves the root cause.
-3. **Verify locally** — run the same check that failed.
-4. **Stage, commit, push** — stage files by name (never `git add -A`).
+2. **Reproduce the failure locally first** — identify the exact failing command or the closest local equivalent and run it before changing code. If the exact CI command cannot run locally, use the nearest faithful reproduction and explicitly note why.
+3. **Fix the code** — minimal change that resolves the root cause.
+4. **Re-run the failing command locally until it passes** — do not treat the fix as done just because the code looks right.
+5. **Stage, commit, push** — stage files by name (never `git add -A`).
 5. **Go to step 1 of the loop** — restart the watch. New CI runs, new bot comments may arrive.
 
-DO NOT proceed to Phase 2 until CI is green. Fix CI first, push, restart the watch.
+DO NOT proceed to Phase 2 until CI is green. When CI fails, the required sequence is: reproduce locally -> fix -> rerun the failing command locally -> push -> restart the watch.
 
 ## Phase 2: Address review comments
 
@@ -131,6 +140,9 @@ DO NOT restart the watch until ALL replies are posted AND all threads are resolv
 
 - **Fix everything, don't ask** — your job is to resolve all issues autonomously. Fix CI failures, address reviews, resolve conflicts. Do NOT ask the user "should I fix this?", "want me to keep watching?", "should I come back later?", or any variation — the answer is always yes, keep going. Only escalate if a fix requires a product decision you genuinely cannot make (e.g. choosing between two valid business rules).
 - **NEVER pause or prompt the user for continuation** — CI runs can take a long time (10+ minutes). This is normal. Always continue the loop until `pr.ready=true`, `pr.state=merged|closed`, or you have exhausted all possible fixes. Do NOT ask the user if they want to wait, come back later, or stop watching. The `--watch` flag handles waiting — trust it and keep looping.
+- **`in_progress` means "stay in the loop", not "we're probably fine"** — an in-progress job is unfinished work. Stay alive, keep Bellwether watching, and be ready to fix the first failure or review that appears.
+- **React immediately to the first actionable signal** — if Bellwether returns because one job failed, one review thread opened, or the branch became dirty/behind, start fixing it right then. Do not stop, summarize, or assume a later pass will take care of it.
+- **A CI fix is not complete until the failing command passes locally** — when Bellwether surfaces a red check, reproduce that failure locally first, then rerun the same failing command locally after the fix. Only push once the local repro passes, unless the CI environment cannot be reproduced and you explicitly state the closest equivalent you verified instead.
 - **A non-mergeable PR with unresolved comments is work, not status** — 25 unresolved review comments is not an occasion to report status. It is a mandatory task queue. If the Decision Table says fix, fix. Never misclassify a review backlog as informational.
 - **One fix per watch cycle** — fix CI OR reviews, not both. Push and restart watch.
 - **Minimal changes** — don't refactor unrelated code.

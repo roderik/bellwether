@@ -33,7 +33,7 @@ bellwether skills add
 
 ## Hooks
 
-Bellwether can install `PostToolUse` and `Stop` hooks into Claude Code (`~/.claude/settings.json`) and Codex (`~/.codex/hooks.json`). After a `git push` or `gh pr create/ready`, the hook reminds the agent to monitor CI. When the agent tries to stop on a branch with an open PR, the stop hook runs `bellwether check` for that PR and continues the turn if the PR is still not merge-ready.
+Bellwether can install `PostToolUse` and `Stop` hooks into Claude Code (`~/.claude/settings.json`) and Codex (`~/.codex/hooks.json`). After a `git push` or `gh pr create/ready`, the hook tells the agent to resume the Bellwether loop immediately. When the agent tries to stop on a branch with an open PR, the stop hook runs `bellwether check` for that PR and blocks stopping unless the PR is actually merge-ready. Pending or in-progress CI is not treated as success.
 
 ```bash
 # Install hooks into Claude Code and Codex
@@ -102,10 +102,13 @@ check --watch
   → CI failing?        → show filtered error logs → fix → push → repeat
   → Unresolved review? → show comment with context → address → reply → repeat
   → Merge conflict?    → sync branch → push → repeat
+  → CI pending only?   → keep watching, do not stop, do not assume success
   → Still blocked?     → keep watching until ready/timeout → repeat
 ```
 
-It queries GitHub's Check Runs API directly, filters job logs down to signal (compiler errors, test failures — not noise), and surfaces review threads with file and line context. `--watch` returns immediately if actionable work already exists; otherwise it establishes a baseline and waits for new actionable work, readiness, terminal PR state, or an inactivity timeout — no manual polling required.
+It queries GitHub's Check Runs API directly, filters job logs down to signal (compiler errors, test failures — not noise), and surfaces review threads with file and line context. `--watch` returns immediately if actionable work already exists; otherwise it establishes a baseline and waits for new actionable work, readiness, terminal PR state, or an inactivity timeout — no manual polling required. A pending or in-progress job is never a success condition; it means Bellwether should keep waiting until the first actionable signal appears or the PR becomes ready.
+
+When a CI job fails, the agent workflow is: reproduce the failing command locally, fix the root cause, rerun that same failing command locally until it passes, then push and restart the watch. A timeout with green CI and zero unresolved reviews can still mean "waiting for review approval" or another external blocker; that case should not be turned into an infinite watch loop.
 
 ## Agent usage
 

@@ -7,7 +7,7 @@ const PR_PATTERN = /\bgit\s+push\b|\bgh\s+pr\s+(create|ready)\b/;
 const DEFAULT_POST_TOOL_USE_EVENT = "PostToolUse";
 const STOP_EVENT = "Stop";
 const CONTINUE_REASON =
-  "Current branch has an open PR that is not merge-ready. Run `bellwether check --watch` and address the reported CI or review issues before stopping.";
+  "Current branch has an open PR that is not merge-ready. Resume the Bellwether loop now: run `bellwether check --watch`, and the moment it returns with a CI failure, review comment, merge conflict, or behind branch, act immediately. If CI fails, reproduce the failing command locally, fix it, rerun that command locally until it passes, then push and restart `bellwether check --watch`. Do not stop while any CI job is still pending or in progress.";
 
 interface HookInput {
   hook_event_name?: string;
@@ -235,7 +235,7 @@ export const hookCheckCommand = {
         hookSpecificOutput: {
           hookEventName: eventName,
           additionalContext:
-            "PR pushed. Run `bellwether check --watch` to monitor CI and reviews until merge-ready.",
+            "PR pushed. Resume the Bellwether loop now: run `bellwether check --watch`, and the moment it returns with a CI failure, review comment, merge conflict, or behind branch, act immediately. If CI fails, reproduce the failing command locally, fix it, rerun that command locally until it passes, then push and restart `bellwether check --watch`. Do not stop while any CI job is still pending or in progress.",
         },
       });
     }

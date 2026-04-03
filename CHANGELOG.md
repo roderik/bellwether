@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Hardened the Bellwether skill and hook instructions so agents must keep the watch loop running while CI is pending or in progress, and must react immediately when the first CI failure or review comment appears.
+- Clarified that CI failures must be reproduced and rerun locally before pushing, and that watch timeouts may exit when the only remaining blockers are external, such as missing review approval.
+
 ## [0.0.7] - 2026-03-30
 
 ### Added
