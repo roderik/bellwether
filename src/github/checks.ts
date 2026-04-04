@@ -4,11 +4,14 @@ import { type GitHubClient } from "./client.js";
 // Types
 // ---------------------------------------------------------------------------
 
+export type CheckCategory = "code" | "infrastructure" | "unknown";
+
 export interface FailingCheck {
   name: string;
   conclusion: string;
   html_url: string;
   log: string;
+  category: CheckCategory;
 }
 
 interface RawCheckRun {
@@ -25,9 +28,63 @@ export interface CIStatus {
   passing: number;
   failing: number;
   pending: number;
+  codeFailing: number;
+  infrastructureFailing: number;
   passed: string[];
   in_progress: string[];
   failures: FailingCheck[];
+}
+
+// ---------------------------------------------------------------------------
+// Check classification
+// ---------------------------------------------------------------------------
+
+const INFRASTRUCTURE_PATTERNS = [
+  /deploy/i,
+  /preview/i,
+  /vercel/i,
+  /netlify/i,
+  /heroku/i,
+  /security[.\-_\s]scan/i,
+  /dependabot/i,
+  /renovate/i,
+  /codecov/i,
+  /coveralls/i,
+  /sonar/i,
+  /snyk/i,
+  /codeql/i,
+  /required[.\-_\s]review/i,
+  /approval/i,
+  /publish/i,
+  /release/i,
+  /pkg-pr-new/i,
+];
+
+const CODE_PATTERNS = [
+  /\blint\b/i,
+  /\btest/i,
+  /\bbuild\b/i,
+  /\btypecheck\b/i,
+  /\btype[.\-_\s]check\b/i,
+  /\bci\b/i,
+  /\bformat\b/i,
+  /\beslint\b/i,
+  /\boxlint\b/i,
+  /\bvitest\b/i,
+  /\bjest\b/i,
+  /\btsc\b/i,
+  /\bcompile\b/i,
+  /\bcheck\b/i,
+];
+
+export function classifyCheck(name: string): CheckCategory {
+  if (INFRASTRUCTURE_PATTERNS.some((p) => p.test(name))) {
+    return "infrastructure";
+  }
+  if (CODE_PATTERNS.some((p) => p.test(name))) {
+    return "code";
+  }
+  return "unknown";
 }
 
 // ---------------------------------------------------------------------------
@@ -154,9 +211,13 @@ export async function fetchCIStatus(
         conclusion: c.conclusion ?? "unknown",
         html_url: c.html_url,
         log,
+        category: classifyCheck(c.name),
       };
     }),
   );
+
+  const codeFailing = failures.filter((f) => f.category !== "infrastructure").length;
+  const infrastructureFailing = failures.filter((f) => f.category === "infrastructure").length;
 
   return {
     sha,
@@ -164,6 +225,8 @@ export async function fetchCIStatus(
     passing: passed.length,
     failing: failingChecks.length,
     pending: in_progress.length,
+    codeFailing,
+    infrastructureFailing,
     passed,
     in_progress,
     failures,

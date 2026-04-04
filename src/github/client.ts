@@ -14,14 +14,25 @@ export function createGitHubClient(token: string): GitHubClient {
     userAgent: "bellwether",
     ...(customFetch ? { request: { fetch: customFetch } } : {}),
     throttle: {
-      onRateLimit: (_retryAfter: number, _options: object, _octokit: object, retryCount: number) =>
-        retryCount < 2,
+      onRateLimit: (retryAfter: number, options: object, _octokit: object, retryCount: number) => {
+        const { method, url } = options as { method: string; url: string };
+        process.stderr.write(
+          `[rate-limit] ${method} ${url} — retry ${retryCount + 1}/3 after ${retryAfter}s\n`,
+        );
+        return retryCount < 3;
+      },
       onSecondaryRateLimit: (
-        _retryAfter: number,
-        _options: object,
+        retryAfter: number,
+        options: object,
         _octokit: object,
         retryCount: number,
-      ) => retryCount < 2,
+      ) => {
+        const { method, url } = options as { method: string; url: string };
+        process.stderr.write(
+          `[secondary-rate-limit] ${method} ${url} — retry ${retryCount + 1}/3 after ${retryAfter}s\n`,
+        );
+        return retryCount < 3;
+      },
     },
     retry: { doNotRetry: [400, 401, 404, 422] },
   });

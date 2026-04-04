@@ -21,15 +21,23 @@ export {
   type ProcessedComment,
   type Reply,
   type FilterOptions,
+  type RawCommentData,
   TRACKING_COMMENT_MARKER,
   fetchPRComments,
+  fetchThreadResolutionState,
   processComments,
   filterComments,
   replyToComment,
   resolveThread,
 } from "./comments.js";
 
-export { type FailingCheck, type CIStatus, fetchCIStatus } from "./checks.js";
+export {
+  type CheckCategory,
+  type FailingCheck,
+  type CIStatus,
+  classifyCheck,
+  fetchCIStatus,
+} from "./checks.js";
 
 export {
   type ConflictHunk,

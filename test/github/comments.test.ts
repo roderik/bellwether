@@ -3,6 +3,7 @@ import {
   processComments,
   filterComments,
   fetchPRComments,
+  fetchThreadResolutionState,
   replyToComment,
   resolveThread,
   TRACKING_COMMENT_MARKER,
@@ -739,6 +740,162 @@ describe("processComments", () => {
 });
 
 // ---------------------------------------------------------------------------
+// fetchThreadResolutionState
+// ---------------------------------------------------------------------------
+
+describe("fetchThreadResolutionState", () => {
+  it("maps databaseId to isResolved for a single page of threads", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql).mockResolvedValueOnce({
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [
+              { id: "T1", isResolved: true, comments: { nodes: [{ databaseId: 10 }] } },
+              { id: "T2", isResolved: false, comments: { nodes: [{ databaseId: 20 }] } },
+            ],
+          },
+        },
+      },
+    });
+
+    const result = await fetchThreadResolutionState("o", "r", 1, octokit);
+    expect(result.get(10)).toBe(true);
+    expect(result.get(20)).toBe(false);
+    expect(result.size).toBe(2);
+  });
+
+  it("paginates when hasNextPage is true", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql)
+      .mockResolvedValueOnce({
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              pageInfo: { hasNextPage: true, endCursor: "cursor1" },
+              nodes: [{ id: "T1", isResolved: true, comments: { nodes: [{ databaseId: 10 }] } }],
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [{ id: "T2", isResolved: false, comments: { nodes: [{ databaseId: 20 }] } }],
+            },
+          },
+        },
+      });
+
+    const result = await fetchThreadResolutionState("o", "r", 1, octokit);
+    expect(result.get(10)).toBe(true);
+    expect(result.get(20)).toBe(false);
+    expect(octokit.graphql).toHaveBeenCalledTimes(2);
+    // Verify second call used cursor from first page
+    expect(octokit.graphql).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ cursor: "cursor1" }),
+    );
+  });
+
+  it("returns empty map when reviewThreads is missing", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql).mockResolvedValueOnce({
+      repository: { pullRequest: {} },
+    });
+
+    const result = await fetchThreadResolutionState("o", "r", 1, octokit);
+    expect(result.size).toBe(0);
+  });
+
+  it("breaks on null endCursor even when hasNextPage is true", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql).mockResolvedValueOnce({
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            pageInfo: { hasNextPage: true, endCursor: null },
+            nodes: [{ id: "T1", isResolved: true, comments: { nodes: [{ databaseId: 1 }] } }],
+          },
+        },
+      },
+    });
+
+    const result = await fetchThreadResolutionState("o", "r", 1, octokit);
+    expect(result.get(1)).toBe(true);
+    expect(result.size).toBe(1);
+    // Should NOT request a second page because endCursor is null
+    expect(octokit.graphql).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("fetchPRComments", () => {
+  it("returns empty resolution state when GraphQL fails", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.paginate)
+      .mockResolvedValueOnce([makeReviewComment()])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    vi.mocked(octokit.graphql).mockRejectedValueOnce(new Error("GraphQL forbidden"));
+
+    const result = await fetchPRComments("owner", "repo", 1, octokit);
+    expect(result.reviewComments).toHaveLength(1);
+    expect(result.threadResolutionState).toBeInstanceOf(Map);
+    expect(result.threadResolutionState!.size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// processComments: threadResolutionState and staleSha
+// ---------------------------------------------------------------------------
+
+describe("processComments thread resolution and staleness", () => {
+  it("uses threadResolutionState to set isResolved on review comments", () => {
+    const threadState = new Map<number, boolean>([[1, true]]);
+
+    const result = processComments({
+      reviewComments: [makeReviewComment({ id: 1 })],
+      issueComments: [],
+      reviews: [],
+      threadResolutionState: threadState,
+    });
+    expect(result[0].isResolved).toBe(true);
+  });
+
+  it("sets staleSha when headSha differs from commit_id", () => {
+    const result = processComments({
+      reviewComments: [makeReviewComment({ id: 1, commit_id: "def456" })],
+      issueComments: [],
+      reviews: [],
+      headSha: "abc123",
+    });
+    expect(result[0].staleSha).toBe("def456");
+  });
+
+  it("does not set staleSha when commit_id matches headSha", () => {
+    const result = processComments({
+      reviewComments: [makeReviewComment({ id: 1, commit_id: "abc123" })],
+      issueComments: [],
+      reviews: [],
+      headSha: "abc123",
+    });
+    expect(result[0].staleSha).toBeUndefined();
+  });
+
+  it("does not set staleSha when headSha is not provided", () => {
+    const result = processComments({
+      reviewComments: [makeReviewComment({ id: 1, commit_id: "def456" })],
+      issueComments: [],
+      reviews: [],
+    });
+    expect(result[0].staleSha).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // filterComments
 // ---------------------------------------------------------------------------
 
@@ -790,19 +947,29 @@ describe("filterComments", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchPRComments", () => {
-  it("fetches review comments, issue comments, and reviews in parallel", async () => {
+  it("fetches review comments, issue comments, reviews, and thread resolution in parallel", async () => {
     const octokit = createMockOctokit();
     // paginate is called 3 times in parallel for review comments, issue comments, and reviews
     vi.mocked(octokit.paginate)
       .mockResolvedValueOnce([{ id: 1 }])
       .mockResolvedValueOnce([{ id: 2 }])
       .mockResolvedValueOnce([{ id: 3 }]);
+    // graphql is called for thread resolution state
+    vi.mocked(octokit.graphql).mockResolvedValueOnce({
+      repository: {
+        pullRequest: {
+          reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
+        },
+      },
+    });
 
     const result = await fetchPRComments("owner", "repo", 1, octokit);
     expect(result.reviewComments).toEqual([{ id: 1 }]);
     expect(result.issueComments).toEqual([{ id: 2 }]);
     expect(result.reviews).toEqual([{ id: 3 }]);
+    expect(result.threadResolutionState).toBeInstanceOf(Map);
     expect(octokit.paginate).toHaveBeenCalledTimes(3);
+    expect(octokit.graphql).toHaveBeenCalledTimes(1);
   });
 });
 

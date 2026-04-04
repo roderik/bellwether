@@ -7,7 +7,7 @@ export function flatten(
 ): Record<string, string | number | boolean> {
   const out: Record<string, string | number | boolean> = {
     sha: status.sha,
-    checks: `${status.total} total, ${status.passing} passing, ${status.failing} failing, ${status.pending} pending`,
+    checks: `${status.total} total, ${status.passing} passing, ${status.codeFailing} failing, ${status.pending} pending${status.infrastructureFailing > 0 ? `, ${status.infrastructureFailing} infra` : ""}`,
   };
   if (status.passed.length > 0) {
     out.passed = status.passed.join(", ");
@@ -16,8 +16,11 @@ export function flatten(
     out.in_progress = status.in_progress.join(", ");
   }
   for (const f of status.failures) {
+    const prefix = f.category === "infrastructure" ? "INFRA" : "FAIL";
     const label =
-      f.conclusion === "failure" ? `FAIL ${f.name}` : `${f.conclusion.toUpperCase()} ${f.name}`;
+      f.conclusion === "failure"
+        ? `${prefix} ${f.name}`
+        : `${prefix} ${f.conclusion.toUpperCase()} ${f.name}`;
     out[label] = f.log;
   }
   if (extra) {

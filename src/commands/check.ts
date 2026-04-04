@@ -33,7 +33,7 @@ function buildPRSection(
     ready:
       mergeState.state === "open" &&
       mergeState.mergeableState === "clean" &&
-      ciStatus.failing === 0 &&
+      ciStatus.codeFailing === 0 &&
       ciStatus.pending === 0 &&
       actionableReviewCount === 0,
   };
@@ -238,12 +238,33 @@ export const checkCommand = {
       while (true) {
         pollCount++;
         // Fetch merge state first so headSha is always current before CI fetch
-        const mergeState = await fetchPRMergeState(
-          ctx.repoInfo.owner,
-          ctx.repoInfo.repo,
-          prNumber,
-          ctx.octokit,
-        );
+        let mergeState: PRMergeState;
+        try {
+          mergeState = await fetchPRMergeState(
+            ctx.repoInfo.owner,
+            ctx.repoInfo.repo,
+            prNumber,
+            ctx.octokit,
+          );
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "";
+          const status =
+            error instanceof Error && "status" in error ? (error as { status: number }).status : 0;
+          const isRateLimit =
+            msg.includes("rate limit") ||
+            msg.includes("secondary rate") ||
+            status === 429 ||
+            (status === 403 && (msg.includes("rate limit") || msg.includes("secondary rate")));
+          if (isRateLimit) {
+            const backoff = Math.min(pollCount, 4) * opts.interval;
+            process.stderr.write(
+              `[watch] rate limited on poll ${pollCount}, backing off ${backoff}s\n`,
+            );
+            await new Promise<void>((r) => setTimeout(r, backoff * 1000));
+            continue;
+          }
+          throw error;
+        }
 
         if (mergeState.state !== "open") {
           return c.ok({
@@ -316,7 +337,7 @@ export const checkCommand = {
         // Fetch CI (using current headSha) and reviews in parallel
         const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
           getCISection(ctx, prNumber, mergeState.headSha),
-          getReviewsList(ctx, prNumber, filterOpts),
+          getReviewsList(ctx, prNumber, filterOpts, mergeState.headSha),
         ]);
 
         const reviewsFlat = formatReviewsSection(reviewData.comments);
@@ -376,7 +397,7 @@ export const checkCommand = {
           return c.ok(
             {
               pr: prSectionWithSync,
-              ci: { ...ciFlat, allPassing: status.pending === 0 && status.failing === 0 },
+              ci: { ...ciFlat, allPassing: status.pending === 0 && status.codeFailing === 0 },
               reviews: reviewsFlat,
             },
             {
@@ -498,7 +519,7 @@ export const checkCommand = {
 
     const [{ status, flat: ciFlat }, reviewData] = await Promise.all([
       getCISection(ctx, prNumber, mergeState.headSha),
-      getReviewsList(ctx, prNumber, filterOpts),
+      getReviewsList(ctx, prNumber, filterOpts, mergeState.headSha),
     ]);
 
     const reviewsFlat = formatReviewsSection(reviewData.comments);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { fetchCIStatus } from "../../src/github/checks.js";
+import { fetchCIStatus, classifyCheck } from "../../src/github/checks.js";
 import { type GitHubClient } from "../../src/github/client.js";
 
 function createMockOctokit(overrides = {}) {
@@ -35,6 +35,27 @@ const fakeLog = [
   "2024-01-01T00:00:01.0000000Z ##[endgroup]",
   "2024-01-01T00:00:01.0000000Z ##[error]Process completed with exit code 1.",
 ].join("\n");
+
+describe("classifyCheck", () => {
+  it("classifies infrastructure check names", () => {
+    const infraNames = ["Deploy Preview", "vercel", "codecov/patch", "Snyk Security"];
+    for (const name of infraNames) {
+      expect(classifyCheck(name)).toBe("infrastructure");
+    }
+  });
+
+  it("classifies code check names", () => {
+    const codeNames = ["lint", "Unit Tests", "build", "typecheck", "CI"];
+    for (const name of codeNames) {
+      expect(classifyCheck(name)).toBe("code");
+    }
+  });
+
+  it("returns unknown for unrecognized check names", () => {
+    expect(classifyCheck("my-workflow")).toBe("unknown");
+    expect(classifyCheck("validate-schema")).toBe("unknown");
+  });
+});
 
 describe("fetchCIStatus", () => {
   it("returns status with passing, failing, pending checks and logs", async () => {
@@ -439,6 +460,307 @@ describe("fetchCIStatus", () => {
     expect(result.passing).toBe(0);
     expect(result.failing).toBe(0);
     expect(result.pending).toBe(0);
+  });
+
+  it("sets codeFailing and infrastructureFailing counts", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "lint",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+          {
+            id: 2,
+            name: "Deploy Preview",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/2",
+          },
+          {
+            id: 3,
+            name: "my-workflow",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/3",
+          },
+        ],
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: fakeLog,
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await fetchCIStatus("o", "r", 1, octokit);
+    // lint=code, Deploy Preview=infrastructure, my-workflow=unknown (counts as code)
+    expect(result.codeFailing).toBe(2);
+    expect(result.infrastructureFailing).toBe(1);
+    expect(result.failures[0].category).toBe("code");
+    expect(result.failures[1].category).toBe("infrastructure");
+    expect(result.failures[2].category).toBe("unknown");
+  });
+
+  it("truncates long log lines to 200 characters", async () => {
+    const longLine = "x".repeat(250);
+    const log = [
+      `2024-01-01T00:00:00.0000000Z ##[group]Run tests`,
+      `2024-01-01T00:00:00.0000000Z ${longLine}`,
+      `2024-01-01T00:00:00.0000000Z ##[error]Process completed with exit code 1.`,
+    ].join("\n");
+
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+        ],
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: log,
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await fetchCIStatus("o", "r", 1, octokit);
+    // Truncated to 200 + ellipsis
+    expect(result.failures[0].log.length).toBeLessThan(250);
+    expect(result.failures[0].log).toContain("…");
+  });
+
+  it("tails log to last 60 lines when log is very long", async () => {
+    const lines: string[] = [];
+    for (let i = 0; i < 100; i++) {
+      lines.push(`2024-01-01T00:00:00.0000000Z line ${i}`);
+    }
+    const log = lines.join("\n");
+
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+        ],
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: log,
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await fetchCIStatus("o", "r", 1, octokit);
+    const outputLines = result.failures[0].log.split("\n");
+    expect(outputLines.length).toBeLessThanOrEqual(60);
+    // Should include lines from the end
+    expect(result.failures[0].log).toContain("line 99");
+  });
+
+  it("handles non-string log data", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+        ],
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: 42,
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await fetchCIStatus("o", "r", 1, octokit);
+    // Non-string data gets String() wrapped
+    expect(result.failures[0].log).toBe("42");
+  });
+
+  it("handles null conclusion in failing checks", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+        ],
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: "error",
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await fetchCIStatus("o", "r", 1, octokit);
+    expect(result.failures[0].conclusion).toBe("failure");
+  });
+
+  it("strips passing test lines from logs", async () => {
+    const log = [
+      "2024-01-01T00:00:00.0000000Z ##[group]Run tests",
+      "2024-01-01T00:00:00.0000000Z  ✓ should pass",
+      "2024-01-01T00:00:00.0000000Z  PASS src/ok.test.ts",
+      "2024-01-01T00:00:00.0000000Z FAIL src/bad.test.ts",
+      "2024-01-01T00:00:00.0000000Z Expected true to be false",
+      "2024-01-01T00:00:00.0000000Z ##[error]Process completed with exit code 1.",
+    ].join("\n");
+
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+        ],
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: log,
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await fetchCIStatus("o", "r", 1, octokit);
+    expect(result.failures[0].log).not.toContain("✓ should pass");
+    expect(result.failures[0].log).not.toContain("PASS src/ok.test.ts");
+    expect(result.failures[0].log).toContain("FAIL src/bad.test.ts");
+  });
+
+  it("strips ##[warning] prefix from log lines", async () => {
+    const log = [
+      "2024-01-01T00:00:00.0000000Z ##[group]Run tests",
+      "2024-01-01T00:00:00.0000000Z ##[warning]Some warning message",
+      "2024-01-01T00:00:00.0000000Z ##[error]Process completed with exit code 1.",
+    ].join("\n");
+
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.rest.pulls.get).mockResolvedValue({
+      data: { head: { sha: "abc" } },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.rest.checks.listForRef).mockResolvedValue({
+      data: {
+        check_runs: [
+          {
+            id: 1,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            html_url: "https://github.com/o/r/actions/runs/1/job/1",
+          },
+        ],
+      },
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+    vi.mocked(octokit.request).mockResolvedValue({
+      data: log,
+      status: 200,
+      headers: {},
+      url: "",
+    } as never);
+
+    const result = await fetchCIStatus("o", "r", 1, octokit);
+    expect(result.failures[0].log).toContain("Some warning message");
+    expect(result.failures[0].log).not.toContain("##[warning]");
   });
 
   it("uses provided headSha and skips PR fetch", async () => {
