@@ -247,13 +247,14 @@ export const checkCommand = {
             ctx.octokit,
           );
         } catch (error) {
+          const msg = error instanceof Error ? error.message : "";
+          const status =
+            error instanceof Error && "status" in error ? (error as { status: number }).status : 0;
           const isRateLimit =
-            error instanceof Error &&
-            (error.message.includes("rate limit") ||
-              error.message.includes("secondary rate") ||
-              ("status" in error &&
-                ((error as { status: number }).status === 403 ||
-                  (error as { status: number }).status === 429)));
+            msg.includes("rate limit") ||
+            msg.includes("secondary rate") ||
+            status === 429 ||
+            (status === 403 && (msg.includes("rate limit") || msg.includes("secondary rate")));
           if (isRateLimit) {
             const backoff = Math.min(pollCount, 4) * opts.interval;
             process.stderr.write(
@@ -396,7 +397,7 @@ export const checkCommand = {
           return c.ok(
             {
               pr: prSectionWithSync,
-              ci: { ...ciFlat, allPassing: status.pending === 0 && status.failing === 0 },
+              ci: { ...ciFlat, allPassing: status.pending === 0 && status.codeFailing === 0 },
               reviews: reviewsFlat,
             },
             {

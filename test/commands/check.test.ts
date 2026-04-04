@@ -940,7 +940,9 @@ describe("checkCommand.run", () => {
       const c = makeCtx({ watch: true, interval: 1, timeout: 10 });
       mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
 
-      const rateLimitError = Object.assign(new Error("Forbidden"), { status: 403 });
+      const rateLimitError = Object.assign(new Error("secondary rate limit exceeded"), {
+        status: 403,
+      });
       mockFetchPRMergeState
         .mockRejectedValueOnce(rateLimitError)
         .mockResolvedValueOnce(mergeStateClean);
@@ -970,5 +972,16 @@ describe("checkCommand.run", () => {
     mockFetchPRMergeState.mockRejectedValue(new Error("network failure"));
 
     await expect(checkCommand.run(c)).rejects.toThrow("network failure");
+  });
+
+  it("watch rethrows 403 permission errors that are not rate limits", async () => {
+    const c = makeCtx({ watch: true, interval: 1, timeout: 10 });
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    const permError = Object.assign(new Error("Resource not accessible by integration"), {
+      status: 403,
+    });
+    mockFetchPRMergeState.mockRejectedValue(permError);
+
+    await expect(checkCommand.run(c)).rejects.toThrow("Resource not accessible by integration");
   });
 });

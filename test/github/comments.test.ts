@@ -810,6 +810,42 @@ describe("fetchThreadResolutionState", () => {
     const result = await fetchThreadResolutionState("o", "r", 1, octokit);
     expect(result.size).toBe(0);
   });
+
+  it("breaks on null endCursor even when hasNextPage is true", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.graphql).mockResolvedValueOnce({
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            pageInfo: { hasNextPage: true, endCursor: null },
+            nodes: [{ id: "T1", isResolved: true, comments: { nodes: [{ databaseId: 1 }] } }],
+          },
+        },
+      },
+    });
+
+    const result = await fetchThreadResolutionState("o", "r", 1, octokit);
+    expect(result.get(1)).toBe(true);
+    expect(result.size).toBe(1);
+    // Should NOT request a second page because endCursor is null
+    expect(octokit.graphql).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("fetchPRComments", () => {
+  it("returns empty resolution state when GraphQL fails", async () => {
+    const octokit = createMockOctokit();
+    vi.mocked(octokit.paginate)
+      .mockResolvedValueOnce([makeReviewComment()])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    vi.mocked(octokit.graphql).mockRejectedValueOnce(new Error("GraphQL forbidden"));
+
+    const result = await fetchPRComments("owner", "repo", 1, octokit);
+    expect(result.reviewComments).toHaveLength(1);
+    expect(result.threadResolutionState).toBeInstanceOf(Map);
+    expect(result.threadResolutionState!.size).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

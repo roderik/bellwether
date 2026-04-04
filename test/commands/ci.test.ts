@@ -104,6 +104,26 @@ describe("flatten", () => {
     const result = flatten(baseStatus, { allPassing: true });
     expect(result.allPassing).toBe(true);
   });
+
+  it("includes infra count in summary when infrastructure failures exist", () => {
+    const result = flatten({
+      ...baseStatus,
+      failing: 1,
+      codeFailing: 0,
+      infrastructureFailing: 1,
+      failures: [
+        {
+          name: "Deploy Preview",
+          conclusion: "failure",
+          html_url: "u",
+          log: "deploy err",
+          category: "infrastructure" as const,
+        },
+      ],
+    });
+    expect(result.checks).toContain("0 failing");
+    expect(result.checks).toContain("1 infra");
+  });
 });
 
 describe("getCISection", () => {

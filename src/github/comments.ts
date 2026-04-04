@@ -258,7 +258,13 @@ export async function fetchThreadResolutionState(
     }
 
     hasNextPage = reviewThreads.pageInfo.hasNextPage;
-    cursor = reviewThreads.pageInfo.endCursor;
+    if (hasNextPage) {
+      const endCursor = reviewThreads.pageInfo.endCursor;
+      if (!endCursor) {
+        break;
+      }
+      cursor = endCursor;
+    }
   }
 
   return result;
@@ -271,7 +277,7 @@ export async function fetchPRComments(
   octokit: GitHubClient,
   headSha?: string,
 ): Promise<RawCommentData> {
-  const [reviewComments, issueComments, reviews, threadResolutionState] = await Promise.all([
+  const [reviewComments, issueComments, reviews, threadResolutionResult] = await Promise.all([
     octokit.paginate(octokit.rest.pulls.listReviewComments, {
       owner,
       repo,
@@ -290,10 +296,18 @@ export async function fetchPRComments(
       pull_number: prNumber,
       per_page: 100,
     }) as Promise<RawReview[]>,
-    fetchThreadResolutionState(owner, repo, prNumber, octokit),
+    fetchThreadResolutionState(owner, repo, prNumber, octokit).catch(
+      () => new Map<number, boolean>(),
+    ),
   ]);
 
-  return { reviewComments, issueComments, reviews, threadResolutionState, headSha };
+  return {
+    reviewComments,
+    issueComments,
+    reviews,
+    threadResolutionState: threadResolutionResult,
+    headSha,
+  };
 }
 
 const EMPTY_RESOLUTION_STATE = new Map<number, boolean>();
@@ -576,7 +590,11 @@ export async function resolveThread(
       ) ?? null;
 
     if (!thread && reviewThreads.pageInfo.hasNextPage) {
-      cursor = reviewThreads.pageInfo.endCursor;
+      const endCursor = reviewThreads.pageInfo.endCursor;
+      if (!endCursor) {
+        break;
+      }
+      cursor = endCursor;
     } else {
       break;
     }

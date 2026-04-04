@@ -167,10 +167,10 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
   // Terminal external blocker: blocked + CI green + 0 unresolved reviews = REVIEW_REQUIRED
   // The agent cannot fulfill human review approvals — let it stop without looping
   const ciFailCount =
-    typeof output.ci?.failing === "number"
-      ? output.ci.failing
-      : typeof output.ci?.codeFailing === "number"
-        ? output.ci.codeFailing
+    typeof output.ci?.codeFailing === "number"
+      ? output.ci.codeFailing
+      : typeof output.ci?.failing === "number"
+        ? output.ci.failing
         : undefined;
   const ciPendingCount = typeof output.ci?.pending === "number" ? output.ci.pending : undefined;
   const unresolvedReviews = parseUnresolvedCount(output.reviews?.total);

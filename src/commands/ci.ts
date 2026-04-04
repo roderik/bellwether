@@ -7,7 +7,7 @@ export function flatten(
 ): Record<string, string | number | boolean> {
   const out: Record<string, string | number | boolean> = {
     sha: status.sha,
-    checks: `${status.total} total, ${status.passing} passing, ${status.failing} failing, ${status.pending} pending`,
+    checks: `${status.total} total, ${status.passing} passing, ${status.codeFailing} failing, ${status.pending} pending${status.infrastructureFailing > 0 ? `, ${status.infrastructureFailing} infra` : ""}`,
   };
   if (status.passed.length > 0) {
     out.passed = status.passed.join(", ");
