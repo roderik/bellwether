@@ -136,6 +136,14 @@ describe("postReply", () => {
     expect(result.resolveError).toBe("fail");
   });
 
+  it("uses default error message when resolve throws a non-Error value", async () => {
+    mockReply.mockResolvedValue({ html_url: "https://url" });
+    mockResolve.mockRejectedValue("string error");
+    const result = await postReply(ctx, 1, "1:Done", true);
+    expect(result.resolved).toBe(false);
+    expect(result.resolveError).toBe("Failed to resolve thread");
+  });
+
   it("handles resolve returning non-resolved", async () => {
     mockReply.mockResolvedValue({ html_url: "https://url" });
     mockResolve.mockResolvedValue({ skipped: true, reason: "not a thread" });
@@ -160,6 +168,31 @@ describe("formatReviewsSection", () => {
     const longBody = "x".repeat(500);
     const result = formatReviewsSection([{ ...comment, body: longBody }]);
     expect(result["REVIEW 1 f.ts:10"]).toBe(longBody);
+  });
+
+  it("tags stale comments with [STALE] and prepends SHA info to body", () => {
+    const staleComment = { ...comment, staleSha: "abc1234567890" };
+    const result = formatReviewsSection([staleComment]);
+    // Key should include [STALE] tag
+    const key = Object.keys(result).find((k) => k.includes("[STALE]"));
+    expect(key).toBe("REVIEW 1 f.ts:10 [STALE]");
+    // Body should start with SHA reference
+    expect(result[key!]).toBe("[Made against abc1234, not current HEAD] fix this");
+  });
+
+  it("tags stale comments without path using [STALE]", () => {
+    const staleComment = { ...comment, path: null, line: null, staleSha: "abc1234567890" };
+    const result = formatReviewsSection([staleComment]);
+    const key = Object.keys(result).find((k) => k.includes("[STALE]"));
+    expect(key).toBe("REVIEW 1 [STALE]");
+    expect(result[key!]).toContain("[Made against abc1234, not current HEAD]");
+  });
+
+  it("does not tag non-stale comments with [STALE]", () => {
+    const result = formatReviewsSection([comment]);
+    const key = Object.keys(result).find((k) => k.includes("[STALE]"));
+    expect(key).toBeUndefined();
+    expect(result["REVIEW 1 f.ts:10"]).toBe("fix this");
   });
 
   it("counts resolved/replied as not unresolved", () => {

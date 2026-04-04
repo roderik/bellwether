@@ -31,13 +31,14 @@ When `bellwether check --watch` returns, apply the first matching rule:
 
 | # | Condition | Action |
 |---|-----------|--------|
-| 1 | Any CI check is failing | Fix CI (Phase 1). Push. Restart watch. |
+| 1 | Any `FAIL` CI check is failing (not `INFRA`) | Fix CI (Phase 1). Push. Restart watch. |
 | 2 | Any unresolved review comment is actionable | Fix comments (Phase 2). Push. Restart watch. |
 | 3 | `pr.mergeable=dirty\|behind` | Sync branch. Push. Restart watch. |
 | 4 | Any CI checks are pending or in progress, and there are no actionable reviews yet | Immediately restart `bellwether check --watch`. This is waiting, not success; do not report completion, do not stop, and do not say it will probably pass. |
 | 5 | `pr.ready=true` | Done. Report "merge-ready". |
 | 6 | `pr.state=merged\|closed` | Done. Report status. |
-| 7 | CI green, 0 unresolved reviews, only missing PR review approval | Done. Report "waiting for review approval". |
+| 7 | `pr.mergeable=blocked`, CI green, 0 unresolved reviews, only missing PR review approval | **Terminal.** Report "Waiting for human review approval — external dependency." Stop. Do not restart watch. Do not fire the Stop hook again. |
+| 8 | Only `INFRA` checks failing, no `FAIL` checks, 0 unresolved reviews | Done. Report "infrastructure CI failures are external — cannot fix locally." |
 
 **Status-only responses are forbidden when rule 1 or 2 applies.** If there are failing CI checks or unresolved actionable review comments, you MUST fix them — never respond with just a status summary.
 
@@ -67,21 +68,28 @@ Never interpret a pending check or in-progress job as "close enough". Those stat
 Three sections:
 
 - **pr** — `state` (open/closed/merged), `mergeable` (clean/dirty/behind/blocked/unstable), `ready` (true when all conditions met)
-- **ci** — SHA, check summary, and for each failing check: the filtered error log with file paths and line numbers
-- **reviews** — unresolved review comments with full body, file path, and line number
+- **ci** — SHA, check summary, and for each failing check: the filtered error log with file paths and line numbers. `FAIL` checks are code failures you can fix. `INFRA` checks are infrastructure failures (deploy, security scan, coverage gate) you cannot fix locally.
+- **reviews** — unresolved review comments with full body, file path, and line number. Comments marked `[STALE]` were made against a different commit than current HEAD — verify relevance before acting.
 
 Important: `allPassing=true` is not sufficient on its own. The only success condition is `pr.ready=true`.
 
 ## Phase 1: Fix CI failures
 
+**`INFRA` checks are external — skip them.** Only fix `FAIL` checks. `INFRA`-prefixed failures are infrastructure CI (deploy previews, security scans, coverage gates, environment provisioning) that you cannot fix locally. Report them and move on. If unsure whether a check is fixable, attempt local reproduction — "command not found" or environment-specific errors mean infrastructure.
+
 For each `FAIL` key in the CI section:
 
 1. **Read the error log** — it contains actual compiler/test output with file paths and line numbers.
 2. **Reproduce the failure locally first** — identify the exact failing command or the closest local equivalent and run it before changing code. If the exact CI command cannot run locally, use the nearest faithful reproduction and explicitly note why.
-3. **Fix the code** — minimal change that resolves the root cause.
-4. **Re-run the failing command locally until it passes** — do not treat the fix as done just because the code looks right.
-5. **Stage, commit, push** — stage files by name (never `git add -A`).
-5. **Go to step 1 of the loop** — restart the watch. New CI runs, new bot comments may arrive.
+3. **Analyze the root cause before fixing** — before writing a fix:
+   - Ask "why did this fail?" not "what line is broken?" A lint error may reveal a logic bug. A type error may reveal a wrong abstraction.
+   - Check if the same pattern exists elsewhere (`grep` the codebase). If the same mistake appears in other files, fix all of them now — don't wait for CI to catch each one individually.
+   - If the failure reveals a missing test, add one that would have caught it.
+   - If your fix is a suppression (lint disable, `any` cast, error ignore), stop and find the real fix. Suppressions are only acceptable when the rule is genuinely inapplicable — explain why in the commit message.
+4. **Fix the code** — minimal change that resolves the root cause.
+5. **Re-run the failing command locally until it passes** — do not treat the fix as done just because the code looks right.
+6. **Stage, commit, push** — stage files by name (never `git add -A`).
+7. **Go to step 1 of the loop** — restart the watch. New CI runs, new bot comments may arrive.
 
 DO NOT proceed to Phase 2 until CI is green. When CI fails, the required sequence is: reproduce locally -> fix -> rerun the failing command locally -> push -> restart the watch.
 
@@ -91,12 +99,24 @@ Process ALL comments in a single batch before replying to any of them.
 
 ### Step A: Evaluate all comments
 
+**Staleness check first.** Reviews marked `[STALE]` were made against a different commit than current HEAD. For each stale review:
+1. Check if the file still exists and the referenced code still contains similar logic.
+2. If the code was deleted or substantially rewritten, classify as **"Stale — code changed"**, reply explaining the rewrite, and resolve.
+3. If the review contains a code suggestion and the current code already matches the suggestion, classify as **"Already implemented"** and resolve.
+4. Only act on stale comments if the underlying concern still applies to the current code.
+
 Read every `REVIEW` key. For each one, classify it and track the comment ID and planned action in your working memory:
 
 **Bot comments** (CodeRabbit, Copilot, Cursor Bugbot):
 - **True positive** — real bug -> will fix
 - **False positive** — bot doesn't understand the pattern -> will reply explaining why, won't fix
 - **Uncertain** — default to fixing it. Only ask the user if the fix would require a major architectural change.
+
+**Bot severity heuristics:**
+- CodeRabbit comments tagged `[nitpick]` or starting with "Nitpick:": resolve without fixing unless you agree the change is genuinely valuable.
+- Copilot: "suggestion" severity < "warning" < "error". Treat suggestions as optional, warnings as should-fix, errors as must-fix.
+- Cursor Bugbot: always potential bugs — default to fixing.
+- When uncertain, the cost of a small fix is lower than the cost of missing a real bug.
 
 **Human comments**:
 - **Actionable** — will fix
@@ -148,5 +168,6 @@ DO NOT restart the watch until ALL replies are posted AND all threads are resolv
 - **Minimal changes** — don't refactor unrelated code.
 - **Every thread MUST be resolved** — replying is not enough. Every `--reply` call MUST include `--resolve`. An unresolved thread is a task you haven't finished. Zero unresolved threads is the only acceptable state before stopping.
 - **Verify before pushing** — always run the failing check locally first.
-- **Never stop until terminal** — if `pr.ready` is false, keep going. The only exception is Decision Table rule 7: CI green, zero unresolved reviews, and the only blocker is missing PR review approval (an external dependency you cannot fulfill).
+- **Never stop until terminal** — if `pr.ready` is false, keep going. The only exceptions are Decision Table rules 7 and 8: external blockers you cannot fulfill (human review approval, infrastructure CI).
+- **Recognize terminal external blockers** — when the only remaining blocker is branch protection requiring human approval (`pr.mergeable=blocked`, CI green, 0 unresolved reviews), this is terminal for the agent. Do not loop, do not retry, do not fire the Stop hook again. Report once and stop. Same for infrastructure-only CI failures (`INFRA` checks with no `FAIL` checks).
 - **No sub-agents** — all work happens in this thread. No Agent tool, no Task tool.

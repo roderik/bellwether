@@ -15,6 +15,8 @@ const baseStatus: CIStatus = {
   passing: 2,
   failing: 0,
   pending: 1,
+  codeFailing: 0,
+  infrastructureFailing: 0,
   passed: ["build", "lint"],
   in_progress: ["test"],
   failures: [],
@@ -51,18 +53,51 @@ describe("flatten", () => {
     const result = flatten({
       ...baseStatus,
       failing: 1,
-      failures: [{ name: "test", conclusion: "failure", html_url: "u", log: "error output" }],
+      failures: [
+        {
+          name: "test",
+          conclusion: "failure",
+          html_url: "u",
+          log: "error output",
+          category: "code" as const,
+        },
+      ],
     });
     expect(result["FAIL test"]).toBe("error output");
+  });
+
+  it("uses INFRA prefix for infrastructure category failures", () => {
+    const result = flatten({
+      ...baseStatus,
+      failing: 1,
+      failures: [
+        {
+          name: "Deploy Preview",
+          conclusion: "failure",
+          html_url: "u",
+          log: "deploy error",
+          category: "infrastructure" as const,
+        },
+      ],
+    });
+    expect(result["INFRA Deploy Preview"]).toBe("deploy error");
   });
 
   it("uses conclusion as prefix for non-failure conclusions", () => {
     const result = flatten({
       ...baseStatus,
       failing: 1,
-      failures: [{ name: "slow", conclusion: "timed_out", html_url: "u", log: "timeout" }],
+      failures: [
+        {
+          name: "slow",
+          conclusion: "timed_out",
+          html_url: "u",
+          log: "timeout",
+          category: "code" as const,
+        },
+      ],
     });
-    expect(result["TIMED_OUT slow"]).toBe("timeout");
+    expect(result["FAIL TIMED_OUT slow"]).toBe("timeout");
   });
 
   it("merges extra fields", () => {

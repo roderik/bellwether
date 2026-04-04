@@ -39,6 +39,18 @@ interface BellwetherCheckOutput {
   };
 }
 
+function parseUnresolvedCount(total: string | number | undefined): number {
+  if (total === undefined) {
+    return 0;
+  }
+  if (typeof total === "number") {
+    return total;
+  }
+  // Format: "3 unresolved, 1 unanswered"
+  const match = total.match(/^(\d+)\s+unresolved/);
+  return match ? Number(match[1]) : 0;
+}
+
 interface CurrentBranchPR {
   branch: string | null;
   prNumber: number | null;
@@ -128,21 +140,18 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
   }
 
   const { output, error } = runBellwetherCheck(prNumber);
+  // On error (rate limit, timeout, CLI crash), don't advise with stale data — let the agent stop
   if (error) {
-    return {
-      reason: `PR #${prNumber} status could not be verified (${error}). Consider running \`bellwether check --watch\` to verify.`,
-    };
+    return {};
   }
 
   if (!output?.pr || output.pr.state !== "open" || output.pr.ready === true) {
     return {};
   }
 
-  // Only block on immediately actionable mergeability states (dirty = conflict, behind = needs sync).
-  // For all other non-ready states (pending CI, unresolved reviews, etc.), use advisory context
-  // instead of blocking — the agent may be mid-conversation, waiting for user input, or working
-  // on something else. Blocking on pending CI creates pressure to push before local verification.
   const mergeableState = typeof output.pr.mergeable === "string" ? output.pr.mergeable : undefined;
+
+  // Block on immediately actionable mergeability states (dirty = conflict, behind = needs sync)
   if (mergeableState === "dirty" || mergeableState === "behind") {
     const mergeable = ` (mergeable: ${mergeableState})`;
     const cta =
@@ -155,11 +164,44 @@ async function handleStopHook(input: HookInput): Promise<{ decision?: "block"; r
     };
   }
 
-  // Advisory: tell the agent the PR state without blocking
+  // Terminal external blocker: blocked + CI green + 0 unresolved reviews = REVIEW_REQUIRED
+  // The agent cannot fulfill human review approvals — let it stop without looping
+  const ciFailCount =
+    typeof output.ci?.failing === "number"
+      ? output.ci.failing
+      : typeof output.ci?.codeFailing === "number"
+        ? output.ci.codeFailing
+        : undefined;
+  const ciPendingCount = typeof output.ci?.pending === "number" ? output.ci.pending : undefined;
+  const unresolvedReviews = parseUnresolvedCount(output.reviews?.total);
+
+  if (
+    mergeableState === "blocked" &&
+    (ciFailCount === undefined || ciFailCount === 0) &&
+    (ciPendingCount === undefined || ciPendingCount === 0) &&
+    unresolvedReviews === 0
+  ) {
+    return {};
+  }
+
+  // Pending CI only — don't nag; the watch loop handles waiting
+  if (
+    (ciFailCount === undefined || ciFailCount === 0) &&
+    ciPendingCount !== undefined &&
+    ciPendingCount > 0 &&
+    unresolvedReviews === 0
+  ) {
+    return {};
+  }
+
+  // Advisory: only when there are code-fixable CI failures or unresolved reviews
   if (output.pr.ready === undefined) {
-    return {
-      reason: `PR #${prNumber} merge readiness could not be determined — the CLI output may be from an older version. Consider running \`bellwether check --watch\` to verify.`,
-    };
+    return {};
+  }
+
+  const hasActionableWork = (ciFailCount !== undefined && ciFailCount > 0) || unresolvedReviews > 0;
+  if (!hasActionableWork) {
+    return {};
   }
 
   const mergeable =
@@ -207,6 +249,11 @@ export const hookCheckCommand = {
 
     const command = input.tool_input?.command ?? "";
     if (PR_PATTERN.test(command)) {
+      // Only nudge about bellwether if there's an open PR for this branch
+      const { prNumber: hookPR } = await resolveCurrentBranchPR();
+      if (!hookPR) {
+        return c.ok({});
+      }
       return c.ok({
         hookSpecificOutput: {
           hookEventName: eventName,

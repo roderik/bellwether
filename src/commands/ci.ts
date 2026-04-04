@@ -16,8 +16,11 @@ export function flatten(
     out.in_progress = status.in_progress.join(", ");
   }
   for (const f of status.failures) {
+    const prefix = f.category === "infrastructure" ? "INFRA" : "FAIL";
     const label =
-      f.conclusion === "failure" ? `FAIL ${f.name}` : `${f.conclusion.toUpperCase()} ${f.name}`;
+      f.conclusion === "failure"
+        ? `${prefix} ${f.name}`
+        : `${prefix} ${f.conclusion.toUpperCase()} ${f.name}`;
     out[label] = f.log;
   }
   if (extra) {

@@ -36,6 +36,10 @@ export const commentSchema = z.object({
   hasHumanReply: z.boolean().describe("Whether a human has replied"),
   hasAnyReply: z.boolean().describe("Whether any reply exists"),
   isResolved: z.boolean().describe("Whether the thread is resolved"),
+  staleSha: z
+    .string()
+    .optional()
+    .describe("When set, the comment was made against this SHA which differs from current HEAD"),
 });
 
 // ---------------------------------------------------------------------------
@@ -51,10 +55,11 @@ export async function getReviewsList(
     botsOnly: boolean;
     humansOnly: boolean;
   },
+  headSha?: string,
 ): Promise<{ comments: ProcessedComment[]; total: number }> {
   const { repoInfo, octokit } = ctx;
 
-  const rawData = await fetchPRComments(repoInfo.owner, repoInfo.repo, prNumber, octokit);
+  const rawData = await fetchPRComments(repoInfo.owner, repoInfo.repo, prNumber, octokit, headSha);
   const processed = processComments(rawData);
   const filtered = filterComments(processed, {
     botsOnly: filterOpts.botsOnly,
@@ -141,9 +146,14 @@ export function formatReviewsSection(
     const location = comment.path
       ? `${comment.path}${comment.line ? `:${comment.line}` : ""}`
       : null;
-    const key = location ? `REVIEW ${comment.id} ${location}` : `REVIEW ${comment.id}`;
+    const staleTag = comment.staleSha ? " [STALE]" : "";
+    const key = location
+      ? `REVIEW ${comment.id} ${location}${staleTag}`
+      : `REVIEW ${comment.id}${staleTag}`;
 
-    const body = comment.body;
+    const body = comment.staleSha
+      ? `[Made against ${comment.staleSha.slice(0, 7)}, not current HEAD] ${comment.body}`
+      : comment.body;
 
     result[key] = body;
   }

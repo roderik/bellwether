@@ -94,6 +94,8 @@ const ciResult = {
     passing: 2,
     failing: 0,
     pending: 1,
+    codeFailing: 0,
+    infrastructureFailing: 0,
     passed: ["build"],
     in_progress: ["test"],
     failures: [],
@@ -337,6 +339,7 @@ describe("checkCommand.run", () => {
           ...ciResult.status,
           pending: 0,
           failing: 1,
+          codeFailing: 1,
           failures: [{ name: "x", conclusion: "failure", html_url: "u", log: "e" }],
         },
         flat: { ...ciResult.flat, "FAIL x": "e" },
@@ -364,6 +367,7 @@ describe("checkCommand.run", () => {
             ...ciResult.status,
             pending: 0,
             failing: 1,
+            codeFailing: 1,
             failures: [{ name: "x", conclusion: "failure", html_url: "u", log: "e" }],
           },
           flat: { ...ciResult.flat, "FAIL x": "e" },
@@ -657,6 +661,7 @@ describe("checkCommand.run", () => {
           ...ciResult.status,
           pending: 0,
           failing: 1,
+          codeFailing: 1,
           failures: [{ name: "x", conclusion: "failure", html_url: "u", log: "e" }],
         },
         flat: { ...ciResult.flat, "FAIL x": "e" },
@@ -856,6 +861,7 @@ describe("checkCommand.run", () => {
           ...ciResult.status,
           pending: 1,
           failing: 1,
+          codeFailing: 1,
           failures: [{ name: "lint", conclusion: "failure", html_url: "u", log: "error" }],
         },
         flat: { ...ciResult.flat, "FAIL lint": "error" },
@@ -894,5 +900,75 @@ describe("checkCommand.run", () => {
 
     const result = cast<{ pr: { ready: boolean } }>(await checkCommand.run(c));
     expect(result.pr.ready).toBe(false);
+  });
+
+  it("watch backs off on rate limit error and continues polling", async () => {
+    vi.useFakeTimers();
+    try {
+      const c = makeCtx({ watch: true, interval: 1, timeout: 10 });
+      mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+
+      const rateLimitError = new Error("API rate limit exceeded");
+      mockFetchPRMergeState
+        .mockRejectedValueOnce(rateLimitError)
+        .mockResolvedValueOnce(mergeStateClean);
+      mockGetCI.mockResolvedValue(
+        asCISection({
+          status: { ...ciResult.status, pending: 0, failing: 0 },
+          flat: ciResult.flat,
+        }),
+      );
+      mockGetReviews.mockResolvedValue(reviewsResult);
+      mockFormatReviews.mockReturnValue(reviewsFlat);
+
+      const promise = checkCommand.run(c);
+      // Advance past rate limit backoff (1 * 1 = 1s backoff for poll 1)
+      await vi.advanceTimersByTimeAsync(1100);
+      const result = cast<{ pr: { ready: boolean }; ci: { allPassing: boolean } }>(await promise);
+
+      expect(mockFetchPRMergeState).toHaveBeenCalledTimes(2);
+      expect(result.pr.ready).toBe(true);
+      expect(result.ci.allPassing).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("watch backs off on 403 status rate limit error", async () => {
+    vi.useFakeTimers();
+    try {
+      const c = makeCtx({ watch: true, interval: 1, timeout: 10 });
+      mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+
+      const rateLimitError = Object.assign(new Error("Forbidden"), { status: 403 });
+      mockFetchPRMergeState
+        .mockRejectedValueOnce(rateLimitError)
+        .mockResolvedValueOnce(mergeStateClean);
+      mockGetCI.mockResolvedValue(
+        asCISection({
+          status: { ...ciResult.status, pending: 0, failing: 0 },
+          flat: ciResult.flat,
+        }),
+      );
+      mockGetReviews.mockResolvedValue(reviewsResult);
+      mockFormatReviews.mockReturnValue(reviewsFlat);
+
+      const promise = checkCommand.run(c);
+      await vi.advanceTimersByTimeAsync(1100);
+      const result = cast<{ pr: { ready: boolean } }>(await promise);
+
+      expect(result.pr.ready).toBe(true);
+      expect(mockFetchPRMergeState).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("watch rethrows non-rate-limit errors from fetchPRMergeState", async () => {
+    const c = makeCtx({ watch: true, interval: 1, timeout: 10 });
+    mockResolvePR.mockResolvedValue({ prNumber: 1, prUrl: "url" });
+    mockFetchPRMergeState.mockRejectedValue(new Error("network failure"));
+
+    await expect(checkCommand.run(c)).rejects.toThrow("network failure");
   });
 });

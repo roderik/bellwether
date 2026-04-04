@@ -21,6 +21,7 @@ export interface ProcessedComment {
   hasHumanReply: boolean;
   hasAnyReply: boolean;
   isResolved: boolean;
+  staleSha?: string;
 }
 
 export interface Reply {
@@ -155,6 +156,7 @@ interface RawReviewComment {
   updated_at: string;
   html_url: string;
   in_reply_to_id?: number;
+  commit_id?: string;
 }
 
 interface RawIssueComment {
@@ -179,6 +181,87 @@ export interface RawCommentData {
   reviewComments: RawReviewComment[];
   issueComments: RawIssueComment[];
   reviews: RawReview[];
+  threadResolutionState?: Map<number, boolean>;
+  headSha?: string;
+}
+
+// ---------------------------------------------------------------------------
+// GraphQL thread resolution state
+// ---------------------------------------------------------------------------
+
+interface ReviewThreadNode {
+  id: string;
+  isResolved: boolean;
+  comments: { nodes: { databaseId: number }[] };
+}
+
+interface ThreadsGraphQLResponse {
+  repository?: {
+    pullRequest?: {
+      reviewThreads?: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        nodes: ReviewThreadNode[];
+      };
+    };
+  };
+}
+
+const THREADS_QUERY = `
+  query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        reviewThreads(first: 100, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            isResolved
+            comments(first: 1) {
+              nodes { databaseId }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchThreadResolutionState(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  octokit: GitHubClient,
+): Promise<Map<number, boolean>> {
+  const result = new Map<number, boolean>();
+  let cursor: string | null = null;
+
+  let hasNextPage = true;
+  while (hasNextPage) {
+    const data: ThreadsGraphQLResponse = await octokit.graphql<ThreadsGraphQLResponse>(
+      THREADS_QUERY,
+      {
+        owner,
+        repo,
+        pr: prNumber,
+        cursor,
+      },
+    );
+
+    const reviewThreads = data.repository?.pullRequest?.reviewThreads;
+    if (!reviewThreads) {
+      break;
+    }
+
+    for (const thread of reviewThreads.nodes) {
+      for (const comment of thread.comments.nodes) {
+        result.set(comment.databaseId, thread.isResolved);
+      }
+    }
+
+    hasNextPage = reviewThreads.pageInfo.hasNextPage;
+    cursor = reviewThreads.pageInfo.endCursor;
+  }
+
+  return result;
 }
 
 export async function fetchPRComments(
@@ -186,8 +269,9 @@ export async function fetchPRComments(
   repo: string,
   prNumber: number,
   octokit: GitHubClient,
+  headSha?: string,
 ): Promise<RawCommentData> {
-  const [reviewComments, issueComments, reviews] = await Promise.all([
+  const [reviewComments, issueComments, reviews, threadResolutionState] = await Promise.all([
     octokit.paginate(octokit.rest.pulls.listReviewComments, {
       owner,
       repo,
@@ -206,13 +290,22 @@ export async function fetchPRComments(
       pull_number: prNumber,
       per_page: 100,
     }) as Promise<RawReview[]>,
+    fetchThreadResolutionState(owner, repo, prNumber, octokit),
   ]);
 
-  return { reviewComments, issueComments, reviews };
+  return { reviewComments, issueComments, reviews, threadResolutionState, headSha };
 }
 
+const EMPTY_RESOLUTION_STATE = new Map<number, boolean>();
+
 export function processComments(data: RawCommentData): ProcessedComment[] {
-  const { reviewComments, issueComments, reviews } = data;
+  const {
+    reviewComments,
+    issueComments,
+    reviews,
+    threadResolutionState = EMPTY_RESOLUTION_STATE,
+    headSha,
+  } = data;
 
   // Build reply map
   const repliesMap = new Map<number, Reply[]>();
@@ -246,6 +339,9 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
     const hasHumanReply = replies.some((r) => !r.isBot);
     const hasAnyReply = replies.length > 0;
 
+    const staleSha =
+      headSha && comment.commit_id && comment.commit_id !== headSha ? comment.commit_id : undefined;
+
     processed.push({
       id: comment.id,
       type: "review_comment",
@@ -262,7 +358,8 @@ export function processComments(data: RawCommentData): ProcessedComment[] {
       replies,
       hasHumanReply,
       hasAnyReply,
-      isResolved: false,
+      isResolved: threadResolutionState.get(comment.id) ?? false,
+      staleSha,
     });
   }
 
@@ -454,52 +551,19 @@ export async function resolveThread(
   | { alreadyResolved: true; threadId: string }
   | { skipped: true; reason: string }
 > {
-  const query = `
-    query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
-      repository(owner: $owner, name: $repo) {
-        pullRequest(number: $pr) {
-          reviewThreads(first: 100, after: $cursor) {
-            pageInfo { hasNextPage endCursor }
-            nodes {
-              id
-              isResolved
-              comments(first: 1) {
-                nodes { databaseId }
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-
-  interface ReviewThreadNode {
-    id: string;
-    isResolved: boolean;
-    comments: { nodes: { databaseId: number }[] };
-  }
-
-  interface GraphQLResponse {
-    repository?: {
-      pullRequest?: {
-        reviewThreads?: {
-          pageInfo: { hasNextPage: boolean; endCursor: string | null };
-          nodes: ReviewThreadNode[];
-        };
-      };
-    };
-  }
-
   let cursor: string | null = null;
   let thread: ReviewThreadNode | null = null;
 
   while (!thread) {
-    const data: GraphQLResponse = await octokit.graphql<GraphQLResponse>(query, {
-      owner,
-      repo,
-      pr: prNumber,
-      cursor,
-    });
+    const data: ThreadsGraphQLResponse = await octokit.graphql<ThreadsGraphQLResponse>(
+      THREADS_QUERY,
+      {
+        owner,
+        repo,
+        pr: prNumber,
+        cursor,
+      },
+    );
 
     const reviewThreads = data.repository?.pullRequest?.reviewThreads;
     if (!reviewThreads) {
