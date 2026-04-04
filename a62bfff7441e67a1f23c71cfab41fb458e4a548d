@@ -1,0 +1,35 @@
+src/commands/check.ts
+  efa753de6e933f7c 250-252,254-257,400
+test/commands/ci.test.ts
+  efa753de6e933f7c 107-126
+src/commands/hook-check.ts
+  efa753de6e933f7c 170-173
+test/commands/check.test.ts
+  efa753de6e933f7c 943,976-986
+src/github/comments.ts
+  efa753de6e933f7c 261-267,280,299-301,304-310,593-597
+test/github/comments.test.ts
+  efa753de6e933f7c 813-848
+src/commands/ci.ts
+  efa753de6e933f7c 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "a62bfff7441e67a1f23c71cfab41fb458e4a548d",
+  "prompts": {
+    "efa753de6e933f7c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08f4496c-7d14-4307-a652-4f60dd4b8b66",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer",
+      "messages": [],
+      "total_additions": 104,
+      "total_deletions": 18,
+      "accepted_lines": 104,
+      "overriden_lines": 0
+    }
+  }
+}
