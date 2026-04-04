@@ -1,0 +1,51 @@
+src/commands/hook-check.ts
+  efa753de6e933f7c 42-53,143,153-154,167-184,187-197,199-204,252-256
+src/github/client.ts
+  efa753de6e933f7c 17-23,25-26,29-35
+test/github/checks.test.ts
+  efa753de6e933f7c 2,39-59,465-765
+src/github/index.ts
+  efa753de6e933f7c 24,27,34-39
+src/commands/check.ts
+  efa753de6e933f7c 36,241-242,247-266,339,521
+src/commands/reviews.ts
+  efa753de6e933f7c 39-42,58,62,149-152,154-156
+src/github/checks.ts
+  efa753de6e933f7c 7-8,14,31-32,38-87,214,219-221,228-229
+SKILL.md
+  efa753de6e933f7c 34,40-41,71-72,78-79,84-92,102-107,115-120,171-172
+test/commands/hook-check.test.ts
+  efa753de6e933f7c 80,98,116,134,253,265-278,318,365,378,391,404,417,431,466,507,524-559,563-584,586-587,590-614,631,647
+src/github/comments.ts
+  efa753de6e933f7c 24,159,184-185,188-264,272,274,293,296,299-300,302-308,342-344,361-362,558-566
+test/commands/reviews.test.ts
+  efa753de6e933f7c 139-146,173-197
+test/commands/ci.test.ts
+  efa753de6e933f7c 18-19,56-64,69-85,90-98,100
+test/github/comments.test.ts
+  efa753de6e933f7c 6,743-861,914,921-928,934,936
+test/commands/check.test.ts
+  efa753de6e933f7c 97-98,342,370,664,864,904-973
+src/commands/ci.ts
+  efa753de6e933f7c 19,21-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "b4c2a74cc8686c1cbf6f54e0fe947e5175c0e4e5",
+  "prompts": {
+    "efa753de6e933f7c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08f4496c-7d14-4307-a652-4f60dd4b8b66",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer",
+      "messages": [],
+      "total_additions": 1091,
+      "total_deletions": 178,
+      "accepted_lines": 1049,
+      "overriden_lines": 0
+    }
+  }
+}
