@@ -144,11 +144,20 @@ describe("postReply", () => {
     expect(result.resolveError).toBe("Failed to resolve thread");
   });
 
-  it("handles resolve returning non-resolved", async () => {
+  it("surfaces skipped reason as resolveError", async () => {
     mockReply.mockResolvedValue({ html_url: "https://url" });
-    mockResolve.mockResolvedValue({ skipped: true, reason: "not a thread" });
+    mockResolve.mockResolvedValue({ skipped: true, reason: "not a review comment thread" });
     const result = await postReply(ctx, 1, "1:Done", true);
     expect(result.resolved).toBe(false);
+    expect(result.resolveError).toBe("not a review comment thread");
+  });
+
+  it("treats alreadyResolved as success", async () => {
+    mockReply.mockResolvedValue({ html_url: "https://url" });
+    mockResolve.mockResolvedValue({ alreadyResolved: true, threadId: "T1" });
+    const result = await postReply(ctx, 1, "1:Done", true);
+    expect(result.resolved).toBe(true);
+    expect(result.resolveError).toBeUndefined();
   });
 });
 

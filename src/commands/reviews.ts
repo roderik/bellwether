@@ -118,7 +118,14 @@ export async function postReply(
   if (shouldResolve) {
     try {
       const res = await resolveThread(repoInfo.owner, repoInfo.repo, prNumber, commentId, octokit);
-      resolved = "resolved" in res && res.resolved;
+      if ("resolved" in res) {
+        resolved = true;
+      } else if ("alreadyResolved" in res) {
+        resolved = true;
+      } else {
+        resolved = false;
+        resolveError = res.reason;
+      }
     } catch (error: unknown) {
       resolved = false;
       resolveError = error instanceof Error ? error.message : "Failed to resolve thread";
