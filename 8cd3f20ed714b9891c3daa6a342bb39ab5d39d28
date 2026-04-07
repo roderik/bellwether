@@ -1,0 +1,25 @@
+test/commands/reviews.test.ts
+  92be5acb7fb9c6ce 147,149,152-160
+src/commands/reviews.ts
+  92be5acb7fb9c6ce 121-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "8cd3f20ed714b9891c3daa6a342bb39ab5d39d28",
+  "prompts": {
+    "92be5acb7fb9c6ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c066d0d-877f-4fea-8362-bfb0df3d9a1d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Roderik van der Veer",
+      "messages": [],
+      "total_additions": 19,
+      "total_deletions": 3,
+      "accepted_lines": 19,
+      "overriden_lines": 0
+    }
+  }
+}
